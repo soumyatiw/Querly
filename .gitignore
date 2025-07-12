@@ -1,0 +1,14 @@
+# Secrets
+backend/.env
+backend/credentials.json
+backend/token.json
+
+# Python venv
+.venv/
+
+# Cache
+__pycache__/
+*.pyc
+
+# Logs
+node_modules/
