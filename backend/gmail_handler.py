@@ -1,7 +1,6 @@
 import os
 import base64
-import json
-
+from bs4 import BeautifulSoup
 from gemini import generate_reply
 
 from google.oauth2.credentials import Credentials
@@ -9,15 +8,15 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
-# If modifying these SCOPES, delete token.json
+# Gmail read-only scope
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+
 
 def authenticate_gmail():
     creds = None
-    # token.json stores user's access and refresh tokens
     if os.path.exists('backend/token.json'):
         creds = Credentials.from_authorized_user_file('backend/token.json', SCOPES)
-    # If there is no valid token, prompt login
+
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -25,21 +24,65 @@ def authenticate_gmail():
             flow = InstalledAppFlow.from_client_secrets_file(
                 'backend/credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
-        # Save the credentials
+
         with open('backend/token.json', 'w') as token:
             token.write(creds.to_json())
     return creds
+
+
+# Function to strip HTML tags if only text/html is available
+def strip_html_tags(html):
+    soup = BeautifulSoup(html, "html.parser")
+    return soup.get_text(separator="\n")
+
+
+# Function to extract body (plain or html)
+def get_email_body(payload):
+    # 1. Try direct payload body
+    if payload.get('body', {}).get('data'):
+        try:
+            decoded = base64.urlsafe_b64decode(payload['body']['data']).decode("utf-8")
+            if payload.get("mimeType") == "text/html":
+                return strip_html_tags(decoded)
+            return decoded
+        except:
+            pass
+
+    # 2. Check if parts exist (multipart message)
+    parts = payload.get('parts', [])
+    for part in parts:
+        mime_type = part.get("mimeType", "")
+        data = part.get("body", {}).get("data")
+
+        if data:
+            try:
+                decoded = base64.urlsafe_b64decode(data).decode("utf-8")
+                if mime_type == "text/html":
+                    return strip_html_tags(decoded)
+                return decoded
+            except:
+                pass
+
+        # Check deeper nested parts (like multipart/alternative)
+        if "parts" in part:
+            result = get_email_body(part)
+            if result:
+                return result
+
+    return ""
+
+
 
 def read_unread_emails():
     creds = authenticate_gmail()
     service = build('gmail', 'v1', credentials=creds)
 
-    # Call the Gmail API to fetch unread messages
+    # Fetch unread messages
     results = service.users().messages().list(userId='me', labelIds=['UNREAD'], maxResults=5).execute()
     messages = results.get('messages', [])
 
     if not messages:
-        print("No unread emails found.")
+        print("✅ No unread emails found.")
         return
 
     for msg in messages:
@@ -53,28 +96,27 @@ def read_unread_emails():
             if header['name'] == 'From':
                 sender = header['value']
 
-        # sender and subject
+        # Extract full email body
+        payload = msg_data.get('payload', {})
+        body = get_email_body(payload) or "⚠️ Could not extract email content."
+
         print(f"📨 Email from: {sender}")
         print(f"📝 Subject: {subject}")
+        print(f"📄 Body:\n{body}\n")
 
-        # email snippet
-        snippet = msg_data.get('snippet', '')
-
-        # Prompt for Gemini
+        # Generate AI reply from Gemini
         prompt = f"""You are an AI email assistant.
-            Here is a new unread email:
-            From: {sender}
-            Subject: {subject}
-            Message: {snippet}
+Here is a new unread email:
+From: {sender}
+Subject: {subject}
+Message: {body}
 
-            Please write a professional, polite, short reply to this email.
-            """
-
-        # Gemini reply
+Please write a professional, polite, short reply to this email.
+"""
         ai_reply = generate_reply(prompt)
         print("🤖 Suggested Reply:")
         print(ai_reply)
-        print("-" * 40)
+        print("-" * 60)
 
 
 if __name__ == "__main__":
