@@ -3,14 +3,17 @@ import base64
 from bs4 import BeautifulSoup
 from gemini import generate_reply
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
-# Gmail read-only scope
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
-
+# Allow reading, replying, and modifying email
+SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
 def authenticate_gmail():
     creds = None
@@ -29,16 +32,14 @@ def authenticate_gmail():
             token.write(creds.to_json())
     return creds
 
-
-# Function to strip HTML tags if only text/html is available
+# Strip HTML tags if message is only HTML
 def strip_html_tags(html):
     soup = BeautifulSoup(html, "html.parser")
     return soup.get_text(separator="\n")
 
-
-# Function to extract body (plain or html)
+# Get plain text body from Gmail payload
 def get_email_body(payload):
-    # 1. Try direct payload body
+    # Check for body in payload
     if payload.get('body', {}).get('data'):
         try:
             decoded = base64.urlsafe_b64decode(payload['body']['data']).decode("utf-8")
@@ -48,7 +49,7 @@ def get_email_body(payload):
         except:
             pass
 
-    # 2. Check if parts exist (multipart message)
+    # Check parts
     parts = payload.get('parts', [])
     for part in parts:
         mime_type = part.get("mimeType", "")
@@ -63,7 +64,7 @@ def get_email_body(payload):
             except:
                 pass
 
-        # Check deeper nested parts (like multipart/alternative)
+        # Check nested parts
         if "parts" in part:
             result = get_email_body(part)
             if result:
@@ -71,13 +72,31 @@ def get_email_body(payload):
 
     return ""
 
+# Send reply via Gmail API
+def send_email_reply(service, to_email, subject, message_body):
+    message = MIMEMultipart()
+    message['to'] = to_email
+    message['subject'] = f"Re: {subject}"
 
+    msg = MIMEText(message_body)
+    message.attach(msg)
 
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+    try:
+        sent_message = service.users().messages().send(
+            userId='me',
+            body={'raw': raw_message}
+        ).execute()
+        print("✅ Reply sent successfully.\n")
+    except Exception as e:
+        print("❌ Error sending email:", e)
+
+# Read unread emails and respond
 def read_unread_emails():
     creds = authenticate_gmail()
     service = build('gmail', 'v1', credentials=creds)
 
-    # Fetch unread messages
     results = service.users().messages().list(userId='me', labelIds=['UNREAD'], maxResults=5).execute()
     messages = results.get('messages', [])
 
@@ -96,7 +115,6 @@ def read_unread_emails():
             if header['name'] == 'From':
                 sender = header['value']
 
-        # Extract full email body
         payload = msg_data.get('payload', {})
         body = get_email_body(payload) or "⚠️ Could not extract email content."
 
@@ -104,20 +122,39 @@ def read_unread_emails():
         print(f"📝 Subject: {subject}")
         print(f"📄 Body:\n{body}\n")
 
-        # Generate AI reply from Gemini
-        prompt = f"""You are an AI email assistant.
-Here is a new unread email:
+        prompt = f"""
+You are an AI email reply bot.
+
+If the email is from a 'no-reply' or automated sender (e.g., noreply@example.com), do not generate any reply at all — return nothing.
+
+Otherwise, based on the following email details, generate only the email reply content. Do not include extra explanations or pretext.
+
 From: {sender}
 Subject: {subject}
 Message: {body}
 
-Please write a professional, polite, short reply to this email.
+Reply strictly and only with the professional, polite, response in human-like language.
 """
-        ai_reply = generate_reply(prompt)
-        print("🤖 Suggested Reply:")
-        print(ai_reply)
-        print("-" * 60)
 
+        try:
+            ai_reply = generate_reply(prompt).strip()
+
+            if not ai_reply or "Sorry, I couldn’t generate" in ai_reply:
+                print("🤖 No valid reply generated. Skipping.")
+                continue
+
+            print("🤖 Suggested Reply:")
+            print(ai_reply)
+
+            # If needed, send it
+            send_email_reply(service, sender, subject, ai_reply)
+            print("✅ Reply sent successfully.")
+
+        except Exception as e:
+            print(f"❌ Gemini error: {e}")
+            continue
+
+        print("-" * 60)
 
 if __name__ == "__main__":
     read_unread_emails()
