@@ -95,7 +95,7 @@ def get_email_body(payload):
 
 def is_automated_sender(sender_email):
     """Return True if sender is a no-reply or automated address."""
-    keywords = ['noreply', 'no-reply', 'do-not-reply', 'notifications', 'notification', 'noreply@', 'mailer-daemon', 'friendsuggestion', 'auto', 'automated', 'donotreply', 'notify', 'no_reply']
+    keywords = ['noreply', 'no-reply', 'do-not-reply', 'notifications', 'notification', 'noreply@', 'mailer-daemon', 'friendsuggestion', 'auto', 'automated', 'donotreply', 'notify', 'no_reply', 'no.reply']
     return any(keyword in sender_email.lower() for keyword in keywords)
 
 
