@@ -18,18 +18,41 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
 def authenticate_gmail():
     creds = None
-    if os.path.exists('backend/token.json'):
-        creds = Credentials.from_authorized_user_file('backend/token.json', SCOPES)
+    token_path = "backend/token.json"
+    credentials_path = "backend/credentials.json"
 
+    # Load token.json if it exists
+    if os.path.exists(token_path):
+        try:
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        except Exception as e:
+            print(f"⚠️ Failed to load token.json: {e}")
+            creds = None
+
+    # If no creds or invalid
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('backend/credentials.json', SCOPES)
+        try:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                raise Exception("Token expired or invalid")
+        except Exception as e:
+            print(f"⚠️ Refresh token error: {e}")
+            print("🔄 Forcing new authentication...")
+
+            # Delete invalid token.json if exists
+            if os.path.exists(token_path):
+                os.remove(token_path)
+
+            # Run OAuth flow again
+            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
             creds = flow.run_local_server(port=0)
 
-        with open('backend/token.json', 'w') as token:
+        # Save new token.json
+        with open(token_path, 'w') as token:
             token.write(creds.to_json())
+            print("✅ New token.json saved successfully.")
+
     return creds
 
 
@@ -72,7 +95,7 @@ def get_email_body(payload):
 
 def is_automated_sender(sender_email):
     """Return True if sender is a no-reply or automated address."""
-    keywords = ['noreply', 'no-reply', 'do-not-reply', 'notifications', 'notification', 'noreply@', 'mailer-daemon']
+    keywords = ['noreply', 'no-reply', 'do-not-reply', 'notifications', 'notification', 'noreply@', 'mailer-daemon', 'friendsuggestion', 'auto', 'automated', 'donotreply', 'notify', 'no_reply']
     return any(keyword in sender_email.lower() for keyword in keywords)
 
 
@@ -115,7 +138,12 @@ def read_unread_emails():
     creds = authenticate_gmail()
     service = build('gmail', 'v1', credentials=creds)
 
-    results = service.users().messages().list(userId='me', labelIds=['UNREAD'], maxResults=5).execute()
+    # Fetch only unread emails
+    results = service.users().messages().list(
+        userId='me',
+        q="is:unread",
+        maxResults=5
+    ).execute()
     messages = results.get('messages', [])
 
     if not messages:
