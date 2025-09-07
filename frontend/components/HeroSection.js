@@ -1,42 +1,27 @@
-// components/HeroSection.js
-import styles from './HeroSection.module.css';
-import { useEffect, useRef } from 'react';
+"use client";
+import React from "react";
+import styles from "./HeroSection.module.css";
 
-const icons = ['🤖', '✉️', '✏️', '🚀']; // replace with SVGs if needed
+const icons = [
+  "/1.png",
+  "/2.png",
+  "/3.png",
+  "/4.png",
+  "/5.png",
+];
 
-const HeroSection = () => {
-  const containerRef = useRef();
-
-  useEffect(() => {
-    const container = containerRef.current;
-    const moveIcons = () => {
-      const iconsEl = container.querySelectorAll('.floating');
-      iconsEl.forEach(icon => {
-        const x = Math.random() * window.innerWidth;
-        const y = Math.random() * (window.innerHeight / 2);
-        icon.style.transform = `translate(${x}px, ${y}px)`;
-      });
-    };
-    moveIcons();
-    const interval = setInterval(moveIcons, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
+export default function HeroSection() {
   return (
-    <section className={styles.hero} ref={containerRef}>
-      {icons.map((icon, i) => (
-        <span key={i} className={`${styles.icon} floating`}>{icon}</span>
-      ))}
-      <div className={styles.content}>
-        <h1>Welcome to Querly</h1>
-        <p>Your AI-powered customer support assistant</p>
-        <div className={styles.buttons}>
-          <button className={styles.btn}>Login</button>
-          <button className={styles.btnPrimary}>Signup</button>
-        </div>
-      </div>
-    </section>
-  );
-};
+    <div className={styles.hero}>
+      <h1 className={styles.heroTitle}>Querly</h1>
+      <p className={styles.heroSubtitle}>Your AI Powered Email Assistant</p>
+      <button className={styles.getStarted}>Get Started</button>
 
-export default HeroSection;
+      <div className={styles.orbit}>
+        {icons.map((src, index) => (
+          <img key={index} src={src} className={styles.icon} alt={`icon ${index + 1}`} />
+        ))}
+      </div>
+    </div>
+  );
+}

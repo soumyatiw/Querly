@@ -1,0 +1,116 @@
+.hero {
+    position: relative;
+    text-align: center;
+    padding: 100px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: #f5f5f5;
+    background-image: radial-gradient(#aaa 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.heroTitle {
+    padding-top: 100px;
+    font-family: 'Great Vibes', cursive;
+    font-size: 8rem;
+    color: #FFBF00;
+    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.322);
+    z-index: 10000;
+    animation: fadeInUp 1s ease-out forwards;
+}
+
+.heroSubtitle {
+    font-family: 'Arial', sans-serif;
+    color: black;
+    font-size: 1.5rem;
+    margin: 20px 0;
+    animation: fadeInUp 1s ease-out 0.5s forwards;
+    opacity: 0;
+}
+
+.getStarted {
+    background-color: black;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    cursor: pointer;
+    border-radius: 8px;
+    font-size: 1rem;
+    animation: fadeInUp 1s ease-out 1s forwards;
+    opacity: 0;
+}
+
+.orbit {
+    position: relative;
+    width: 450px;
+    height: 450px;
+    margin-top: 0px;
+}
+
+.icon {
+    position: absolute;
+    width: 150px;
+    height: 150px;
+    top: 0;
+    left: 0;
+    animation: float 6s ease-in-out infinite;
+}
+
+/* Fixed random-ish positions and staggered animation delays */
+.icon:nth-child(1) {
+    top: -85%;
+    left: -30%;
+    animation-delay: 0s;
+}
+
+.icon:nth-child(2) {
+    top: -20%;
+    left: 120%;
+    animation-delay: 1s;
+}
+
+.icon:nth-child(3) {
+    top: -85%;
+    left: 100%;
+    animation-delay: 2s;
+}
+
+.icon:nth-child(4) {
+    top: 15%;
+    left: 45%;
+    animation-delay: 3s;
+}
+
+.icon:nth-child(5) {
+    top: -10%;
+    left: -40%;
+    animation-delay: 4s;
+}
+
+/* Floating animation */
+@keyframes float {
+    0% {
+        transform: translate(0, 0);
+    }
+    50% {
+        transform: translate(0px, 30px);
+    }
+    100% {
+        transform: translate(0, 0);
+    }
+}
+
+/* Entering animation for text and button */
+@keyframes fadeInUp {
+    0% {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

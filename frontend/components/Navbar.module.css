@@ -7,7 +7,7 @@
   position: fixed;   /* keeps it stuck at the top */
   top: 0;
   width: 100%;
-  z-index: 100;     /* ensures it stays above other elements */
+  z-index: 100000;     /* ensures it stays above other elements */
   box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* subtle shadow */
 }
 
