@@ -1,103 +1,115 @@
 .navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 50px;
-  background: white;
-  position: fixed;   /* keeps it stuck at the top */
-  top: 0;
-  width: 100%;
-  z-index: 100000;     /* ensures it stays above other elements */
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* subtle shadow */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 50px;
+    background: white;
+    position: fixed;
+    /* keeps it stuck at the top */
+    top: 0;
+    width: 100%;
+    z-index: 100000;
+    /* ensures it stays above other elements */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    /* subtle shadow */
 }
 
 .left {
-  display: flex;
-  align-items: center;
+    display: flex;
+    align-items: center;
 }
 
 .brand {
-  font-size: 24px;
-  font-weight: bold;
-  margin-left: 10px;
-  color: #000; /* black */
+    font-family: 'Pacifico', cursive;
+    font-size: 24px;
+    font-weight: bold;
+    margin-left: 10px;
+    color: #000;
+    /* black */
 }
 
 .right button {
-  margin-left: 15px;
+    margin-left: 15px;
 }
 
 .btn {
-  padding: 8px 16px;
-  border: 1px solid #000;
-  background: white;
-  color: #000;
-  cursor: pointer;
-  border-radius: 5px;
-  transition: all 0.3s ease;
+    padding: 8px 16px;
+    border: 1px solid #000;
+    background: white;
+    color: #000;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.3s ease;
 }
 
 .btn:hover {
-  background: #000;
-  color: white;
+    background: #000;
+    color: white;
 }
 
 .btnPrimary {
-  padding: 8px 16px;
-  border: none;
-  background: gold;
-  color: #000;
-  cursor: pointer;
-  border-radius: 5px;
-  transition: all 0.3s ease;
+    padding: 8px 16px;
+    border: none;
+    background: #ffbf00;
+    color: #000;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.3s ease;
 }
 
 .btnPrimary:hover {
-  background: #e6c200;
+    background: #e6c200;
 }
 
 
 .left {
-  display: flex;
-  align-items: center;
+    display: flex;
+    align-items: center;
 }
 
 .brand {
-  font-size: 24px;
-  font-weight: bold;
-  margin-left: 10px;
-  color: #000; /* black */
+    font-size: 24px;
+    font-weight: bold;
+    margin-left: 10px;
+    color: #000;
+    /* black */
 }
 
 .right button {
-  margin-left: 15px;
+    margin-left: 15px;
 }
 
 .btn {
-  padding: 8px 16px;
-  border: 1px solid #000; /* black */
-  background: white;
-  color: #000; /* black */
-  cursor: pointer;
-  border-radius: 5px;
-  transition: all 0.3s ease;
+    padding: 8px 16px;
+    border: 1px solid #000;
+    /* black */
+    background: white;
+    color: #000;
+    /* black */
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.3s ease;
 }
 
 .btn:hover {
-  background: #000; /* black background on hover */
-  color: white;     /* white text */
+    background: #000;
+    /* black background on hover */
+    color: white;
+    /* white text */
 }
 
 .btnPrimary {
-  padding: 8px 16px;
-  border: none;
-  background: gold;
-  color: #000; /* black text on gold */
-  cursor: pointer;
-  border-radius: 5px;
-  transition: all 0.3s ease;
+    padding: 8px 16px;
+    border: none;
+    background: gold;
+    color: #000;
+    /* black text on gold */
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.3s ease;
 }
 
 .btnPrimary:hover {
-  background: #e6c200; /* darker gold on hover */
+    background: #e6c200;
+    /* darker gold on hover */
 }
