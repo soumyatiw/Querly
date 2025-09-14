@@ -5,13 +5,10 @@
     padding: 20px 50px;
     background: white;
     position: fixed;
-    /* keeps it stuck at the top */
     top: 0;
     width: 100%;
     z-index: 100000;
-    /* ensures it stays above other elements */
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    /* subtle shadow */
 }
 
 .left {
@@ -20,12 +17,10 @@
 }
 
 .brand {
-    font-family: 'Pacifico', cursive;
     font-size: 24px;
-    font-weight: bold;
+    font-weight: 550;
     margin-left: 10px;
     color: #000;
-    /* black */
 }
 
 .right button {
@@ -50,7 +45,7 @@
 .btnPrimary {
     padding: 8px 16px;
     border: none;
-    background: #ffbf00;
+    background: #ffc64bff;
     color: #000;
     cursor: pointer;
     border-radius: 5px;
@@ -58,58 +53,5 @@
 }
 
 .btnPrimary:hover {
-    background: #e6c200;
-}
-
-
-.left {
-    display: flex;
-    align-items: center;
-}
-
-.brand {
-    font-size: 24px;
-    font-weight: bold;
-    margin-left: 10px;
-    color: #000;
-    /* black */
-}
-
-.right button {
-    margin-left: 15px;
-}
-
-.btn {
-    padding: 8px 16px;
-    border: 1px solid #000;
-    /* black */
-    background: white;
-    color: #000;
-    /* black */
-    cursor: pointer;
-    border-radius: 5px;
-    transition: all 0.3s ease;
-}
-
-.btn:hover {
-    background: #000;
-    /* black background on hover */
-    color: white;
-    /* white text */
-}
-
-.btnPrimary {
-    padding: 8px 16px;
-    border: none;
-    background: gold;
-    color: #000;
-    /* black text on gold */
-    cursor: pointer;
-    border-radius: 5px;
-    transition: all 0.3s ease;
-}
-
-.btnPrimary:hover {
-    background: #e6c200;
-    /* darker gold on hover */
+    background: rgb(247, 176, 22);
 }

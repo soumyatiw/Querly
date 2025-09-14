@@ -3,20 +3,36 @@
     justify-content: center;
     align-items: flex-start;
     gap: 3rem;
-    margin-top: 60px;
     flex-wrap: wrap;
-    padding: 20px;
     padding-bottom: 80px;
     animation: fadeInUp 1s ease-out 2s forwards;
     opacity: 0;
 }
 
-/* Feature Card */
 .card {
     text-align: center;
-    max-width: 280px;
-    flex: 1 1 250px;
+    height: 280px;
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 25px 20px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
 }
+
+.card:hover {
+    transform: translateY(-10px) scale(1.02);
+    box-shadow: 0 10px 25px rgba(41, 41, 102, 0.2);
+    border: 1px solid rgba(255, 191, 0, 0.6);
+}
+
 
 /* Circle Icon */
 .iconCircle {
@@ -38,7 +54,7 @@
 
 /* Title */
 .card h3 {
-    font-size: 1.6rem;
+    font-size: 1.3rem;
     font-weight: 600;
     color: #000;
     margin: 12px 0 12px;
