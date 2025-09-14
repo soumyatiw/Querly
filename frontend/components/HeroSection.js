@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import styles from "./HeroSection.module.css";
 
+
 const icons = ["/1.png", "/2.png", "/3.png", "/4.png", "/5.png"];
 
 export default function HeroSection() {
@@ -46,6 +47,7 @@ export default function HeroSection() {
                     />
                 ))}
             </div>
+
         </div>
     );
 }
