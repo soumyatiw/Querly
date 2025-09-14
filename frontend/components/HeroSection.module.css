@@ -2,7 +2,7 @@
     position: relative;
     text-align: center;
     padding: 100px;
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -18,7 +18,6 @@
     /* keep laptop size */
     max-width: 500px;
     height: auto;
-    padding-top: 90px;
 }
 
 .strokeText {
@@ -74,7 +73,7 @@
 
 /* Orbit + Icons */
 .orbit {
-    position: relative;
+    position: absolute;
     width: 450px;
     height: 450px;
     margin-top: 0px;
@@ -89,31 +88,31 @@
 
 /* Floating positions stay fixed */
 .icon:nth-child(1) {
-    top: -95%;
+    top: -10%;
     left: -30%;
     animation-delay: 0s;
 }
 
 .icon:nth-child(2) {
-    top: -20%;
+    top: 65%;
     left: 110%;
     animation-delay: 1s;
 }
 
 .icon:nth-child(3) {
-    top: -92%;
+    top: -10%;
     left: 100%;
     animation-delay: 2s;
 }
 
 .icon:nth-child(4) {
-    top: 7%;
+    top: 95%;
     left: 45%;
     animation-delay: 3s;
 }
 
 .icon:nth-child(5) {
-    top: -20%;
+    top: 65%;
     left: -40%;
     animation-delay: 4s;
 }
@@ -150,8 +149,8 @@
 /* Tablets only */
 @media (max-width: 1024px) {
     .heroTitleSVG {
-        width: 55%;
-        padding-top: 100px;
+        width: 50%;
+        padding-top: 80px;
     }
 
     .heroSubtitle {
@@ -159,8 +158,8 @@
     }
 
     .orbit {
-        width: 350px;
-        height: 350px;
+        width: 300px;
+        height: 300px;
     }
 
     .icon {
@@ -169,9 +168,9 @@
     }
 }
 
-@media (max-width: 550px) {
+@media (max-width: 768px) {
     .heroTitleSVG {
-        width: 80%;
+        width: 50%;
         padding-top: 100px;
     }
 
@@ -193,36 +192,39 @@
         width: 90px;
         height: 90px;
     }
+
     .icon:nth-child(1) {
-        top: -100%;
-        left: -20%;
+        top: -10%;
+        left: -30%;
         animation-delay: 0s;
     }
 
     .icon:nth-child(2) {
-        top: -10%;
-        left: 90%;
+        top: 65%;
+        left: 110%;
         animation-delay: 1s;
     }
 
     .icon:nth-child(3) {
-        top: -100%;
-        left: 90%;
+        top: -10%;
+        left: 100%;
         animation-delay: 2s;
     }
 
     .icon:nth-child(4) {
-        top: 10%;
-        left: 35%;
+        top: 110%;
+        left: 45%;
         animation-delay: 3s;
     }
 
     .icon:nth-child(5) {
-        top: -10%;
-        left: -20%;
+        top: 65%;
+        left: -40%;
         animation-delay: 4s;
     }
+
 }
+
 /* Mobiles only */
 @media (max-width: 450px) {
     .hero {
@@ -251,31 +253,31 @@
     }
 
     .icon:nth-child(1) {
-        top: -95%;
-        left: -15%;
+        top: -5%;
+        left: -10%;
         animation-delay: 0s;
     }
 
     .icon:nth-child(2) {
-        top: -20%;
+        top: 80%;
         left: 85%;
         animation-delay: 1s;
     }
 
     .icon:nth-child(3) {
-        top: -95%;
+        top: -5%;
         left: 85%;
         animation-delay: 2s;
     }
 
     .icon:nth-child(4) {
-        top: 10%;
+        top: 100%;
         left: 35%;
         animation-delay: 3s;
     }
 
     .icon:nth-child(5) {
-        top: -20%;
+        top: 80%;
         left: -10%;
         animation-delay: 4s;
     }
