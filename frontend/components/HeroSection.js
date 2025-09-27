@@ -23,7 +23,7 @@ export default function HeroSection() {
                 <g
                     id="svgGroup"
                     strokeLinecap="round"
-                    fillRule="evenodd"
+                    fillRule='evenodd'
                     fontSize="9pt"
                 >
                     <path
@@ -39,6 +39,7 @@ export default function HeroSection() {
 
             <div className={styles.orbit}>
                 {icons.map((src, index) => (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                         key={index}
                         src={src}

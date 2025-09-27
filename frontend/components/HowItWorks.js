@@ -59,7 +59,7 @@ export default function HowItWorks() {
 
   return (
     <section className={styles.timelineSection}>
-      <h2 className={styles.sectionTitle}>How Querly Works</h2>
+      <h2 className={styles.sectionTitle} id='howitworks'>How Querly Works</h2>
       <div
         ref={timelineRef}
         className={styles.timeline}

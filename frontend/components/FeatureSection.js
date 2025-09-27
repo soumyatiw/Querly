@@ -26,7 +26,7 @@ export default function FeatureSection() {
   ];
 
   return (
-    <section className={styles.features}>
+    <section className={styles.features} >
       {features.map((feature, index) => (
         <div key={index} className={styles.card}>
           <div

@@ -1,0 +1,82 @@
+.footer {
+  background: #000000; 
+  color: white;
+  padding: 60px 20px 20px;
+  font-family: "Inter", sans-serif;
+}
+
+.container {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 3rem;
+  flex-wrap: wrap;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.brand h2 {
+  font-family: "Playfair Display", serif;
+  font-size: 2rem;
+  color: #ffbf00;
+  margin-bottom: 12px;
+}
+
+.brand p {
+  font-size: 0.95rem;
+  color: #ffffff;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+.links h3,
+.social h3 {
+  font-size: 1.2rem;
+  margin-bottom: 15px;
+  color: #ffbf00;
+}
+
+.links ul {
+  list-style: none;
+  padding: 0;
+}
+
+.links ul li {
+  margin-bottom: 10px;
+}
+
+.links ul li a {
+  text-decoration: none;
+  color: #ffffff;
+  font-size: 0.95rem;
+  transition: color 0.3s ease;
+}
+
+.links ul li a:hover {
+  color: #ffbf00;
+}
+
+.icons {
+  display: flex;
+  gap: 18px;
+}
+
+.icons a {
+  font-size: 1.5rem;
+  color: #ffffff;
+  transition: color 0.3s ease, transform 0.3s ease;
+}
+
+.icons a:hover {
+  color: #ffbf00;
+  transform: translateY(-3px);
+}
+
+.bottomBar {
+  text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  margin-top: 40px;
+  padding-top: 20px;
+  font-size: 0.9rem;
+  color: #bbb;
+}
