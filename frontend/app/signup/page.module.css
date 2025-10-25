@@ -275,9 +275,9 @@
 }
 
 /* Dark mode support */
-@media (prefers-color-scheme: dark) {
+/* @media (prefers-color-scheme: dark) {
   .container {
     background-color: #0f0f0f;
     background-image: radial-gradient(#333 1px, transparent 1px);
   }
-}
+} */

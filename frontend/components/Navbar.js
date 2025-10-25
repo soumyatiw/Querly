@@ -1,6 +1,7 @@
 // components/Navbar.js
 import styles from './Navbar.module.css';
 import Image from 'next/image';
+import Link from 'next/link';
 
 const Navbar = () => {
   return (
@@ -10,8 +11,12 @@ const Navbar = () => {
         <span className={styles.brand}>Querly</span>
       </div>
       <div className={styles.right}>
-        <button className={styles.btn}>Login</button>
-        <button className={styles.btnPrimary}>Signup</button>
+        <Link href="/login">
+          <button className={styles.btn}>Login</button>
+        </Link>
+        <Link href="/signup">
+          <button className={styles.btnPrimary}>Signup</button>
+        </Link>
       </div>
     </nav>
   );
