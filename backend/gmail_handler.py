@@ -2,13 +2,11 @@ import os
 import base64
 from bs4 import BeautifulSoup
 from gemini import generate_reply
-
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
@@ -16,44 +14,37 @@ from google.auth.transport.requests import Request
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
 
-def authenticate_gmail():
+def authenticate_gmail(token_path, credentials_path):
+    """Loads Credentials from token_path (JSON), otherwise returns None."""
     creds = None
-    token_path = "backend/token.json"
-    credentials_path = "backend/credentials.json"
-
-    # Load token.json if it exists
     if os.path.exists(token_path):
         try:
             creds = Credentials.from_authorized_user_file(token_path, SCOPES)
         except Exception as e:
-            print(f"⚠️ Failed to load token.json: {e}")
+            print(f"⚠️ Failed to load token file {token_path}: {e}")
             creds = None
 
-    # If no creds or invalid
-    if not creds or not creds.valid:
+    # Refresh if expired
+    if creds and creds.expired:
         try:
-            if creds and creds.expired and creds.refresh_token:
+            if creds.refresh_token:
                 creds.refresh(Request())
+                with open(token_path, 'w') as f:
+                    f.write(creds.to_json())
             else:
-                raise Exception("Token expired or invalid")
+                print("⚠️ No refresh token available, re-auth required.")
+                creds = None
         except Exception as e:
-            print(f"⚠️ Refresh token error: {e}")
-            print("🔄 Forcing new authentication...")
-
-            # Delete invalid token.json if exists
-            if os.path.exists(token_path):
-                os.remove(token_path)
-
-            # Run OAuth flow again
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-            creds = flow.run_local_server(port=0)
-
-        # Save new token.json
-        with open(token_path, 'w') as token:
-            token.write(creds.to_json())
-            print("✅ New token.json saved successfully.")
+            print(f"⚠️ Error refreshing token for {token_path}: {e}")
+            creds = None
 
     return creds
+
+
+def save_credentials_to_file(creds, token_path):
+    """Save google.oauth2.credentials.Credentials to file as json"""
+    with open(token_path, 'w') as f:
+        f.write(creds.to_json())
 
 
 def strip_html_tags(html):
@@ -95,7 +86,8 @@ def get_email_body(payload):
 
 def is_automated_sender(sender_email):
     """Return True if sender is a no-reply or automated address."""
-    keywords = ['noreply', 'no-reply', 'do-not-reply', 'notifications', 'notification', 'noreply@', 'mailer-daemon', 'friendsuggestion', 'auto', 'automated', 'donotreply', 'notify', 'no_reply', 'no.reply']
+    keywords = ['noreply', 'no-reply', 'do-not-reply', 'notifications', 'notification', 'noreply@', 'mailer-daemon',
+                'friendsuggestion', 'auto', 'automated', 'donotreply', 'notify', 'no_reply', 'no.reply']
     return any(keyword in sender_email.lower() for keyword in keywords)
 
 
@@ -110,7 +102,7 @@ def send_email_reply(service, to_email, subject, message_body):
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
     try:
-        sent_message = service.users().messages().send(
+        service.users().messages().send(
             userId='me',
             body={'raw': raw_message}
         ).execute()
@@ -125,27 +117,31 @@ def mark_email_as_replied(service, msg_id):
         service.users().messages().modify(
             userId='me',
             id=msg_id,
-            body={
-                'removeLabelIds': ['UNREAD']
-            }
+            body={'removeLabelIds': ['UNREAD']}
         ).execute()
         print(f"📩 Email {msg_id} marked as replied ✅\n")
     except Exception as e:
         print(f"⚠️ Failed to mark email as replied: {e}")
 
 
-def read_unread_emails():
-    creds = authenticate_gmail()
+def read_unread_emails_with_creds(creds):
+    if not creds:
+        print("No credentials passed.")
+        return
+
     service = build('gmail', 'v1', credentials=creds)
 
-    # Fetch only unread emails
-    results = service.users().messages().list(
-        userId='me',
-        q="is:unread",
-        maxResults=5
-    ).execute()
-    messages = results.get('messages', [])
+    try:
+        results = service.users().messages().list(
+            userId='me',
+            q="is:unread",
+            maxResults=5
+        ).execute()
+    except Exception as e:
+        print("❌ Error listing messages:", e)
+        return
 
+    messages = results.get('messages', [])
     if not messages:
         print("✅ No unread emails found.")
         return
@@ -181,9 +177,7 @@ From: {sender}
 Subject: {subject}
 Message: {body}
 
-Reply strictly and only with a professional, polite response in human-like language. Do not add any additional discounts, promotions, or marketing content. Focus on addressing the email content directly.
-Do not add any introductions, explanations, or markdown.
-Only reply if necessary.
+Reply strictly and only with a professional, polite response in human-like language.
 """
 
         try:
@@ -208,4 +202,5 @@ Only reply if necessary.
 
 
 if __name__ == "__main__":
-    read_unread_emails()
+    creds = authenticate_gmail("backend/token.json", "backend/credentials.json")
+    read_unread_emails_with_creds(creds)

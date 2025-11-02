@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { auth } from "../../firebase";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import styles from "./page.module.css";
@@ -11,12 +12,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const router = useRouter();
 
   const handleEmailLogin = async (e) => {
     e.preventDefault();
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       setMessage(`User logged in: ${userCredential.user.email}`);
+      router.push("/dashboard"); 
     } catch (error) {
       setMessage(error.message);
     }
@@ -27,6 +30,7 @@ export default function LoginPage() {
     try {
       const result = await signInWithPopup(auth, provider);
       setMessage(`Logged in with Google: ${result.user.email}`);
+      router.push("/dashboard"); 
     } catch (error) {
       setMessage(error.message);
     }
@@ -65,7 +69,6 @@ export default function LoginPage() {
           Login with Google
         </button>
 
-        {/* Signup link */}
         <p className={styles.footer}>
           Don’t have an account?{" "}
           <Link href="/signup" className={styles.link}>Signup</Link>

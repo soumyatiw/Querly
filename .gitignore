@@ -11,4 +11,4 @@ __pycache__/
 *.pyc
 
 # Logs
-node_modules/
+node_modules/backend/tokens/
