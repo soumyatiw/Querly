@@ -93,6 +93,10 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
   const handleApprove = async () => {
     setActing(true);
     try {
+      // Auto-save edits before sending — no need to press Save first
+      if (editBody !== draft.ai_reply_body) {
+        await onEdit(draft.draft_id, editBody);
+      }
       await onApprove(draft.draft_id);
       showToast("Email sent! Draft approved.");
       setTimeout(onClose, 1500);
@@ -119,6 +123,7 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
   const category = draft.categorization?.category;
   const catIcon  = category ? (CATEGORY_ICONS[category] ?? "📧") : null;
   const isPending = draft.status === "pending_review";
+  const isDirty   = editBody !== draft.ai_reply_body; // track unsaved changes
 
   return (
     /* Backdrop */
@@ -186,7 +191,7 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
               )}
             </div>
             <div className={styles.emailBody}>
-              {draft.original_body_full || draft.original_body_snippet || "No body preview available."}
+              {draft.original_body || draft.original_body_snippet || "No body preview available."}
             </div>
           </div>
 
@@ -198,7 +203,9 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
             <div className={styles.panelHeader}>
               <span className={styles.panelLabel}>AI-Generated Reply</span>
               {isPending && (
-                <span className={styles.editHint}>✏️ Editable</span>
+                <span className={styles.editHint}>
+                  {isDirty ? "✏️ Edited (auto-saved on send)" : "✏️ Editable"}
+                </span>
               )}
             </div>
             {draft.ai_reply_body ? (
@@ -225,25 +232,20 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
               <button
                 className={styles.btnReject}
                 onClick={handleReject}
-                disabled={acting || saving}
+                disabled={acting}
               >
                 ❌ Reject
               </button>
             </div>
             <div className={styles.footerRight}>
               <button
-                className={styles.btnSave}
-                onClick={handleSave}
-                disabled={saving || acting || editBody === draft.ai_reply_body}
-              >
-                {saving ? "Saving…" : "💾 Save Edits"}
-              </button>
-              <button
                 className={styles.btnApprove}
                 onClick={handleApprove}
-                disabled={acting || saving}
+                disabled={acting}
               >
-                {acting ? <><span className={styles.spinnerSm} /> Sending…</> : "✅ Approve & Send"}
+                {acting
+                  ? <><span className={styles.spinnerSm} /> {isDirty ? "Saving & Sending…" : "Sending…"}</>
+                  : isDirty ? "✅ Save & Send" : "✅ Approve & Send"}
               </button>
             </div>
           </div>

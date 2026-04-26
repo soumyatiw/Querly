@@ -1,10 +1,9 @@
 import os
 import base64
 import json
+import asyncio
+import traceback
 from bs4 import BeautifulSoup
-from gemini import generate_reply, categorize_email
-from rag import search_knowledge_base
-import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -12,44 +11,60 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
-# Import from our db module
-from db import get_user_tokens, save_user_tokens, update_job_status, save_draft, get_user_settings, get_processed_email_ids
-import asyncio
+# Local imports
+from db import (
+    get_user_tokens, save_user_tokens,
+    save_draft, get_user_settings,
+    update_job_status, get_processed_email_ids,
+    check_draft_exists
+)
+from gemini import generate_reply, categorize_email
 
 # Allow reading, replying, and modifying email
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send']
 
 
+# ── Event-loop bridge ──────────────────────────────────────────────────────────
+# gmail_handler runs in a sync thread (FastAPI BackgroundTask). Motor is bound
+# to the main asyncio event loop. Use run_coroutine_threadsafe to schedule Motor
+# coroutines on the correct loop and block until they complete.
+
+def _run(coro, loop: asyncio.AbstractEventLoop):
+    """Schedule an async coroutine on `loop` from a sync thread and block for the result."""
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result()   # blocks the worker thread, NOT the event loop
+
+
+# ── Auth ───────────────────────────────────────────────────────────────────────
+
 async def authenticate_gmail(uid: str):
-    """Loads Credentials from MongoDB using the user's uid."""
+    """Loads Credentials from MongoDB using the user's uid (async — called from async context)."""
     user_tokens = await get_user_tokens(uid)
     if not user_tokens:
         print(f"⚠️ No tokens found for uid {uid}")
         return None
-        
-    access_token = user_tokens.get("google_access_token")
+
+    access_token  = user_tokens.get("google_access_token")
     refresh_token = user_tokens.get("google_refresh_token")
-    
+
     if not access_token:
         print(f"⚠️ Access token missing for uid {uid}")
         return None
 
-    # Load client config from credentials.json
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
     CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
-    
+
     try:
         with open(CREDENTIALS_PATH, 'r') as f:
-            creds_data = json.load(f)
+            creds_data    = json.load(f)
             client_config = creds_data.get('web') or creds_data.get('installed')
-            client_id = client_config['client_id']
+            client_id     = client_config['client_id']
             client_secret = client_config['client_secret']
-            token_uri = client_config['token_uri']
+            token_uri     = client_config['token_uri']
     except Exception as e:
         print("⚠️ Failed to load credentials.json:", e)
         return None
 
-    # Reconstruct Credentials object
     creds = Credentials(
         token=access_token,
         refresh_token=refresh_token,
@@ -59,7 +74,6 @@ async def authenticate_gmail(uid: str):
         scopes=SCOPES
     )
 
-    # Refresh if expired
     if creds and creds.expired:
         try:
             if creds.refresh_token:
@@ -81,6 +95,8 @@ async def authenticate_gmail(uid: str):
     return creds
 
 
+# ── Email parsing helpers ──────────────────────────────────────────────────────
+
 def strip_html_tags(html):
     soup = BeautifulSoup(html, "html.parser")
     return soup.get_text(separator="\n")
@@ -99,7 +115,7 @@ def get_email_body(payload):
     parts = payload.get('parts', [])
     for part in parts:
         mime_type = part.get("mimeType", "")
-        data = part.get("body", {}).get("data")
+        data      = part.get("body", {}).get("data")
 
         if data:
             try:
@@ -119,281 +135,268 @@ def get_email_body(payload):
 
 
 def is_automated_sender(sender_email):
-    """Return True if sender is a no-reply or automated address."""
-    keywords = ['noreply', 'no-reply', 'do-not-reply', 'notifications', 'notification', 'noreply@', 'mailer-daemon',
-                'friendsuggestion', 'auto', 'automated', 'donotreply', 'notify', 'no_reply', 'no.reply']
+    keywords = [
+        'noreply', 'no-reply', 'do-not-reply', 'notifications', 'notification',
+        'noreply@', 'mailer-daemon', 'friendsuggestion', 'auto', 'automated',
+        'donotreply', 'notify', 'no_reply', 'no.reply'
+    ]
     return any(keyword in sender_email.lower() for keyword in keywords)
 
 
-def create_gmail_draft(service, to_email, subject, message_body):
+# ── Gmail API actions ──────────────────────────────────────────────────────────
+
+def mark_email_as_read(service, msg_id):
+    try:
+        service.users().messages().modify(
+            userId='me', id=msg_id,
+            body={'removeLabelIds': ['UNREAD']}
+        ).execute()
+        print(f"📩 Email {msg_id} marked as read ✅")
+    except Exception as e:
+        print(f"⚠️ Failed to mark email as read: {e}")
+
+
+def send_gmail_draft(service, draft_id: str) -> bool:
+    try:
+        service.users().drafts().send(userId='me', body={'id': draft_id}).execute()
+        print(f"✅ Draft {draft_id} sent.")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send draft {draft_id}: {e}")
+        return False
+
+
+def delete_gmail_draft(service, draft_id: str) -> bool:
+    try:
+        service.users().drafts().delete(userId='me', id=draft_id).execute()
+        print(f"🗑️ Draft {draft_id} deleted.")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to delete draft {draft_id}: {e}")
+        return False
+
+
+def update_gmail_draft(service, draft_id: str, to_email: str, subject: str, body: str) -> bool:
+    try:
+        message = MIMEMultipart()
+        message['to']      = to_email
+        message['subject'] = f"Re: {subject}"
+        message.attach(MIMEText(body))
+        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        service.users().drafts().update(
+            userId='me', id=draft_id,
+            body={'message': {'raw': raw}}
+        ).execute()
+        print(f"✏️ Draft {draft_id} updated.")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to update draft {draft_id}: {e}")
+        return False
+
+
+def create_gmail_draft(service, to_email: str, subject: str, body: str) -> str | None:
+    """Creates a Gmail draft and returns its draft_id, or None on failure."""
     message = MIMEMultipart()
-    message['to'] = to_email
+    message['to']      = to_email
     message['subject'] = f"Re: {subject}"
-
-    msg = MIMEText(message_body)
-    message.attach(msg)
-
-    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-
+    message.attach(MIMEText(body))
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
     try:
         draft = service.users().drafts().create(
             userId='me',
-            body={'message': {'raw': raw_message}}
+            body={'message': {'raw': raw}}
         ).execute()
-        print(f"✅ Draft created successfully: {draft['id']}\n")
         return draft['id']
     except Exception as e:
-        print("❌ Error creating draft:", e)
+        print(f"❌ Error creating Gmail draft: {e}")
         return None
 
-def send_gmail_draft(service, draft_id):
-    try:
-        service.users().drafts().send(
-            userId='me',
-            body={'id': draft_id}
-        ).execute()
-        print(f"✅ Draft sent successfully: {draft_id}\n")
-        return True
-    except Exception as e:
-        print("❌ Error sending draft:", e)
-        return False
 
-def delete_gmail_draft(service, draft_id):
-    try:
-        service.users().drafts().delete(
-            userId='me',
-            id=draft_id
-        ).execute()
-        print(f"✅ Draft deleted successfully: {draft_id}\n")
-        return True
-    except Exception as e:
-        print("❌ Error deleting draft:", e)
-        return False
+# ── Main background processing loop ───────────────────────────────────────────
 
-def update_gmail_draft(service, draft_id, to_email, subject, message_body):
-    message = MIMEMultipart()
-    message['to'] = to_email
-    message['subject'] = f"Re: {subject}" if not subject.startswith("Re:") else subject
+def read_unread_emails_with_creds(
+    creds,
+    uid: str,
+    job_id: str,
+    days: int = 1,
+    loop: asyncio.AbstractEventLoop = None
+):
+    """
+    Synchronous function run inside a FastAPI BackgroundTask (worker thread).
+    All Motor/async calls go through _run(coro, loop) which schedules them back
+    on the main event loop via run_coroutine_threadsafe — fixing the
+    'Future attached to a different loop' RuntimeError.
+    """
 
-    msg = MIMEText(message_body)
-    message.attach(msg)
+    # Fallback: try to get the running loop if not passed (should not happen)
+    if loop is None:
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
 
-    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    drafts_created    = 0
+    already_processed = 0
+    not_actionable    = 0
+    generation_errors = 0
 
-    try:
-        draft = service.users().drafts().update(
-            userId='me',
-            id=draft_id,
-            body={'message': {'raw': raw_message}}
-        ).execute()
-        print(f"✅ Draft updated successfully: {draft_id}\n")
-        return True
-    except Exception as e:
-        print("❌ Error updating draft:", e)
-        return False
-
-
-def mark_email_as_replied(service, msg_id):
-    """Remove 'UNREAD' label to mark it as read after replying"""
-    try:
-        service.users().messages().modify(
-            userId='me',
-            id=msg_id,
-            body={'removeLabelIds': ['UNREAD']}
-        ).execute()
-        print(f"📩 Email {msg_id} marked as replied ✅\n")
-    except Exception as e:
-        print(f"⚠️ Failed to mark email as replied: {e}")
-
-
-async def read_unread_emails_with_creds(creds, uid, job_id=None, days=1):
-    if not creds:
-        print("No credentials passed.")
-        if job_id:
-            await update_job_status(job_id, "error", "No credentials passed")
-        return
-
-    user_settings = await get_user_settings(uid)
-    tone = user_settings.get("tone", "Professional")
-    business_context = user_settings.get("business_context", "")
-    persona_notes = user_settings.get("persona_notes", "")
-
-    if job_id:
-        await update_job_status(job_id, "processing", "Fetching unread emails...")
+    _run(update_job_status(job_id, "processing", "Starting email processing…"), loop)
 
     service = build('gmail', 'v1', credentials=creds)
 
-    # Build date-filtered Gmail query — only fetch emails in the chosen window.
-    # NOTE: We do NOT use is:unread because Querly marks emails as read after
-    # processing. After a draft clear, those emails would never be found again.
-    # The already_processed dedup set below prevents re-processing duplicates.
-    from datetime import datetime as _dt, timedelta as _td
-    after_date = (_dt.utcnow() - _td(days=days)).strftime("%Y/%m/%d")
-    gmail_query = f"after:{after_date}"
-
-    # Pre-load processed email IDs to prevent duplicate drafts on re-run
-    already_processed = await get_processed_email_ids(uid)
+    from datetime import datetime, timedelta
+    cutoff_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y/%m/%d")
+    gmail_query = f"is:unread after:{cutoff_date}"
 
     try:
-        def fetch_messages():
-            return service.users().messages().list(
-                userId='me',
-                q=gmail_query,
-                maxResults=20
-            ).execute()
-        results = await asyncio.to_thread(fetch_messages)
+        results = service.users().messages().list(
+            userId='me', q=gmail_query, maxResults=20
+        ).execute()
     except Exception as e:
-        print(f"Error listing messages: {e}")
-        if job_id:
-            await update_job_status(job_id, "error", f"Error listing messages: {e}")
+        print("❌ Error listing messages:", e)
+        _run(update_job_status(job_id, "error", f"Failed to list messages: {e}"), loop)
         return
 
-    all_messages = results.get('messages', [])
-    # Skip emails that already have a draft / skip record in MongoDB
-    messages = [m for m in all_messages if m['id'] not in already_processed]
-
+    messages = results.get('messages', [])
     if not messages:
-        print("No new unread emails to process.")
-        if job_id:
-            note = f"No new emails to process (window: {days}d, already handled: {len(all_messages)})."
-            await update_job_status(job_id, "done", note)
+        print("✅ No unread emails found.")
+        _run(update_job_status(job_id, "done", "No unread emails found."), loop)
         return
 
-    processed_count = 0
-    replied_count = 0
+    # Pre-fetch already-processed IDs to skip unnecessary API calls
+    processed_ids   = _run(get_processed_email_ids(uid), loop)
+    message_ids     = [m['id'] for m in messages]
+    new_message_ids = [mid for mid in message_ids if mid not in processed_ids]
+    already_processed = len(message_ids) - len(new_message_ids)
 
-    for idx, msg in enumerate(messages):
-        msg_id = msg['id']
-        if job_id:
-            await update_job_status(job_id, "processing", f"Processing email {idx + 1} of {len(messages)}...")
+    print(f"📊 Total unread: {len(message_ids)} | Already processed: {already_processed} | New: {len(new_message_ids)}")
 
-        def fetch_msg_data():
-            return service.users().messages().get(userId='me', id=msg_id).execute()
-            
-        msg_data = await asyncio.to_thread(fetch_msg_data)
-        headers = msg_data['payload']['headers']
+    if not new_message_ids:
+        summary_msg = f"Done: 0 new drafts. {already_processed} emails already processed."
+        _run(update_job_status(job_id, "done", summary_msg), loop)
+        return
 
-        subject = sender = email_date = ""
+    # Fetch user settings
+    user_settings = _run(get_user_settings(uid), loop)
+    tone          = user_settings.get("tone", "Professional")
+    business_ctx  = user_settings.get("business_context", "")
+    persona_notes = user_settings.get("persona_notes", "")
+
+    try:
+        from rag import query_knowledge_base
+        rag_available = True
+    except ImportError:
+        rag_available = False
+
+    for msg_id in new_message_ids:
+        # Race-condition guard: check DB before processing
+        if _run(check_draft_exists(uid, msg_id), loop):
+            print(f"⏭️  Email {msg_id} already has a draft, skipping.")
+            already_processed += 1
+            continue
+
+        try:
+            msg_data = service.users().messages().get(userId='me', id=msg_id).execute()
+        except Exception as e:
+            print(f"❌ Failed to fetch message {msg_id}: {e}")
+            generation_errors += 1
+            continue
+
+        headers    = msg_data['payload']['headers']
+        subject    = sender = email_date = ""
         for header in headers:
-            if header['name'] == 'Subject':
-                subject = header['value']
-            if header['name'] == 'From':
-                sender = header['value']
-            if header['name'] == 'Date':
-                email_date = header['value']
+            if header['name'] == 'Subject': subject    = header['value']
+            if header['name'] == 'From':    sender     = header['value']
+            if header['name'] == 'Date':    email_date = header['value']
 
         payload = msg_data.get('payload', {})
-        body = get_email_body(payload) or "⚠️ Could not extract email content."
+        body    = get_email_body(payload) or "⚠️ Could not extract email content."
 
-        print(f"📨 Email from: {sender}")
-        print(f"📝 Subject: {subject}")
-        print(f"📄 Body:\n{body}\n")
+        print(f"\n📨 Processing: [{msg_id}] {subject} — from {sender}")
 
+        # Skip automated senders — save a skipped record so we never revisit
         if is_automated_sender(sender):
-            print("🚫 Automated/no-reply sender detected. Skipping reply.\n")
-            def mark_replied():
-                mark_email_as_replied(service, msg_id)
-            await asyncio.to_thread(mark_replied)
-            processed_count += 1
+            print("🚫 Automated/no-reply sender — skipping.")
+            mark_email_as_read(service, msg_id)
+            not_actionable += 1
+            _run(save_draft(
+                draft_id=None, uid=uid, original_email_id=msg_id,
+                original_subject=subject, original_sender=sender,
+                original_body_snippet=body, ai_reply_body="",
+                tone_used=tone, email_date=email_date,
+            ), loop)
             continue
 
-        email_context = f"From: {sender}\nSubject: {subject}\nMessage: {body}"
+        # Categorize
+        categorization = categorize_email(subject, body, sender)
+        print(f"🏷️  Category: {categorization.get('category')} | should_reply: {categorization.get('should_reply')}")
 
-        # Categorize first
+        if not categorization.get("should_reply", True):
+            print("📭 Not actionable — skipping reply.")
+            mark_email_as_read(service, msg_id)
+            not_actionable += 1
+            _run(save_draft(
+                draft_id=None, uid=uid, original_email_id=msg_id,
+                original_subject=subject, original_sender=sender,
+                original_body_snippet=body, ai_reply_body="",
+                tone_used=tone, categorization=categorization, email_date=email_date,
+            ), loop)
+            continue
+
+        # RAG context (optional)
+        relevant_context = None
+        if rag_available:
+            try:
+                relevant_context = _run(query_knowledge_base(uid, f"{subject}\n{body[:500]}"), loop)
+            except Exception as rag_err:
+                print(f"⚠️ RAG query failed: {rag_err}")
+
+        # Generate AI reply — raise on failure, skip gracefully
         try:
-            def run_categorize():
-                return categorize_email(subject, body, sender)
-            categorization = await asyncio.to_thread(run_categorize)
-            print(f"📊 Categorization: {categorization}")
-        except Exception as e:
-            print("❌ Categorization failed:", e)
-            categorization = {
-                "category": "other",
-                "priority": "low",
-                "summary": "Could not categorize.",
-                "should_reply": False
-            }
-
-        should_reply = categorization.get("should_reply", False)
-        category = categorization.get("category", "other")
-
-        if not should_reply or category.lower() in ["newsletter", "spam"]:
-            print(f"⏭️ Skipping reply for email (Category: {category}, Should Reply: {should_reply})")
-            await save_draft(
-                draft_id=None,
-                uid=uid,
-                original_email_id=msg_id,
-                original_subject=subject,
-                original_sender=sender,
-                original_body_snippet=body,
-                ai_reply_body=None,
-                tone_used=tone,
-                categorization=categorization,
-                email_date=email_date,
-            )
-            def mark_replied():
-                mark_email_as_replied(service, msg_id)
-            await asyncio.to_thread(mark_replied)
-            processed_count += 1
+            ai_reply = generate_reply(
+                email_body=body, tone=tone,
+                business_context=business_ctx, persona_notes=persona_notes,
+                relevant_context=relevant_context
+            ).strip()
+        except Exception as gen_err:
+            print(f"❌ AI generation failed for email {msg_id}: {gen_err}")
+            traceback.print_exc()
+            generation_errors += 1
+            _run(save_draft(
+                draft_id=None, uid=uid, original_email_id=msg_id,
+                original_subject=subject, original_sender=sender,
+                original_body_snippet=body, ai_reply_body="",
+                tone_used=tone, categorization=categorization, email_date=email_date,
+            ), loop)
+            mark_email_as_read(service, msg_id)
             continue
 
-        try:
-            # RAG: retrieve relevant knowledge-base chunks using the email body as query
-            rag_context = await search_knowledge_base(uid, body)
-
-            def run_gemini():
-                return generate_reply(
-                    email_body=email_context,
-                    tone=tone,
-                    business_context=business_context,
-                    persona_notes=persona_notes,
-                    relevant_context=rag_context if rag_context else None
-                ).strip()
-            ai_reply = await asyncio.to_thread(run_gemini)
-
-            if not ai_reply:
-                print("🤖 No valid reply generated. Skipping.\n")
-                def mark_replied():
-                    mark_email_as_replied(service, msg_id)
-                await asyncio.to_thread(mark_replied)
-                processed_count += 1
-                continue
-
-            print("🤖 Suggested Reply:")
-            print(ai_reply)
-
-            def create_draft_and_mark():
-                draft_id = create_gmail_draft(service, sender, subject, ai_reply)
-                if draft_id:
-                    mark_email_as_replied(service, msg_id)
-                return draft_id
-            
-            draft_id = await asyncio.to_thread(create_draft_and_mark)
-            if draft_id:
-                await save_draft(
-                    draft_id=draft_id,
-                    uid=uid,
-                    original_email_id=msg_id,
-                    original_subject=subject,
-                    original_sender=sender,
-                    original_body_snippet=body,
-                    ai_reply_body=ai_reply,
-                    tone_used=tone,
-                    categorization=categorization,
-                    email_date=email_date,
-                )
-                replied_count += 1
-            processed_count += 1
-
-        except Exception as e:
-            print(f"❌ Gemini error: {e}")
+        # Create Gmail draft
+        gmail_draft_id = create_gmail_draft(service, sender, subject, ai_reply)
+        if not gmail_draft_id:
+            print(f"❌ Failed to create Gmail draft for {msg_id}")
+            generation_errors += 1
             continue
 
+        # Save to MongoDB
+        _run(save_draft(
+            draft_id=gmail_draft_id, uid=uid, original_email_id=msg_id,
+            original_subject=subject, original_sender=sender,
+            original_body_snippet=body, ai_reply_body=ai_reply,
+            tone_used=tone, categorization=categorization, email_date=email_date,
+        ), loop)
+
+        mark_email_as_read(service, msg_id)
+        drafts_created += 1
+        print(f"✅ Draft saved: {gmail_draft_id}")
         print("-" * 60)
-        
-    if job_id:
-        await update_job_status(job_id, "done", f"Processed {processed_count} emails, replied to {replied_count}.")
 
+    # Build result summary for the frontend toast
+    parts = [f"{drafts_created} draft(s) created"]
+    if already_processed:   parts.append(f"{already_processed} already processed")
+    if not_actionable:      parts.append(f"{not_actionable} skipped (not actionable)")
+    if generation_errors:   parts.append(f"{generation_errors} skipped (AI error)")
 
-if __name__ == "__main__":
-    pass
+    summary_msg = "Done: " + ", ".join(parts) + "."
+    _run(update_job_status(job_id, "done", summary_msg), loop)
+    print(f"\n🏁 Job {job_id} complete — {summary_msg}")

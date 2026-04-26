@@ -50,6 +50,12 @@ async def init_db():
     await drafts_collection.create_index([("uid", 1), ("status", 1)])
     # also sort by newest first
     await drafts_collection.create_index([("uid", 1), ("created_at", -1)])
+    # PROBLEM 3 FIX: unique compound index prevents duplicate drafts for same email
+    await drafts_collection.create_index(
+        [("uid", 1), ("original_email_id", 1)],
+        unique=True,
+        sparse=True  # sparse so docs without original_email_id aren't affected
+    )
 
     # knowledge_base — retrieve chunks by user
     await knowledge_collection.create_index("uid")
@@ -160,10 +166,13 @@ async def save_draft(
         "original_email_id":     original_email_id,
         "original_subject":      original_subject,
         "original_sender":       original_sender,
-        "original_body_snippet": snippet,          # short preview for card
-        "original_body_full":    original_body_snippet,  # full text for modal
+        # PROBLEM 4 FIX: separate fields — original_body for context, ai_reply_body for display
+        "original_body":         original_body_snippet,  # full original email text
+        "original_body_snippet": snippet,                # short preview for card
         "ai_reply_body":         ai_reply_body,
         "tone_used":             tone_used,
+        # PROBLEM 2 FIX: explicit type tag so queries can distinguish AI drafts from anything else
+        "type":                  "ai_draft",
         "status":                "pending_review" if draft_id else "skipped",
         "created_at":            datetime.utcnow(),
         "email_date":            email_date,       # raw Date header from Gmail
@@ -172,8 +181,11 @@ async def save_draft(
         doc["categorization"] = categorization
     await drafts_collection.insert_one(doc)
 
-async def get_user_drafts(uid: str, days: int = None):
-    query = {"uid": uid}
+async def get_user_drafts(uid: str, days: int = None, pending_only: bool = False):
+    # PROBLEM 2 FIX: always scope to ai_draft type; optionally also filter status
+    query = {"uid": uid, "type": "ai_draft"}
+    if pending_only:
+        query["status"] = "pending_review"
     if days:
         from datetime import timedelta
         cutoff = datetime.utcnow() - timedelta(days=days)
@@ -189,6 +201,11 @@ async def get_processed_email_ids(uid: str) -> set:
     )
     docs = await cursor.to_list(length=10000)
     return {d["original_email_id"] for d in docs if d.get("original_email_id")}
+
+async def check_draft_exists(uid: str, email_id: str) -> bool:
+    """Returns True if a draft/skipped record already exists for this email ID."""
+    doc = await drafts_collection.find_one({"uid": uid, "original_email_id": email_id})
+    return doc is not None
 
 async def get_draft(draft_id: str):
     return await drafts_collection.find_one({"draft_id": draft_id})

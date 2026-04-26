@@ -188,8 +188,11 @@ export default function DashboardPage() {
       const qs   = days ? `?days=${days}` : "";
       const res  = await apiFetch(`/drafts${qs}`);
       const data = await res.json();
-      // Always replace — never append
-      setDrafts(data.drafts ?? []);
+      // PROBLEM 2 FIX: client-side safety filter — only show real AI drafts pending review
+      const filtered = (data.drafts ?? []).filter(
+        (d) => d.type === "ai_draft" && d.status === "pending_review"
+      );
+      setDrafts(filtered);
     } catch (e) { setDraftsError(e.message); }
     setDraftsLoading(false);
   }, []);
@@ -224,11 +227,16 @@ export default function DashboardPage() {
         if (data.status === "done" || data.status === "error") {
           clearInterval(pollRef.current);
           setProcessing(false);
-          setJobMessage(
-            data.status === "done"
-              ? `✅ ${data.result_summary || "Processing complete!"}`
-              : `❌ Error: ${data.result_summary}`
-          );
+
+          if (data.status === "done") {
+            // PROBLEM 3 FIX: parse result_summary into a readable toast
+            // result_summary format: "Done: 2 draft(s) created, 5 already processed, 1 skipped (not actionable), 1 skipped (AI error)."
+            const summary = data.result_summary || "Processing complete!";
+            setJobMessage(`✅ ${summary}`);
+          } else {
+            setJobMessage(`❌ Error: ${data.result_summary}`);
+          }
+
           fetchSummary();
           fetchDrafts();
         }

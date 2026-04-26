@@ -1,20 +1,26 @@
 import os
 import json
 import re
+import traceback
 import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# Fail loudly at import time if the key is missing — catches misconfigured .env early
+assert os.getenv("GEMINI_API_KEY"), (
+    "GEMINI_API_KEY is not set. Add it to backend/.env and restart the server."
+)
+
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Use Flash for fast structured tasks (categorization)
 # Use Pro for quality reply generation
-_flash  = genai.GenerativeModel("gemini-1.5-flash")
-_pro    = genai.GenerativeModel("gemini-1.5-pro")
+_flash  = genai.GenerativeModel("models/gemini-2.5-flash")
+_pro    = genai.GenerativeModel("models/gemini-2.5-pro")
 
 
-# ── Reply generation ───────────────────────────────────────────────────────────
+# ── Reply generation ────────────────────────────────────────────────────────────
 
 def generate_reply(email_body, tone="Professional", business_context="", persona_notes="", relevant_context=None):
     context_block = ""
@@ -40,21 +46,58 @@ def generate_reply(email_body, tone="Professional", business_context="", persona
         "- Output ONLY the email reply text — no subject line, no preamble, no explanation\n\n"
         f"Original email:\n{email_body}\n"
     )
+
+    # ── Try Pro first ───────────────────────────────────────────────────────────
     try:
         response = _pro.generate_content(prompt)
+
+        # Log safety / finish signals so we can diagnose silent failures
+        if hasattr(response, "prompt_feedback") and response.prompt_feedback:
+            print(f"[Gemini] prompt_feedback: {response.prompt_feedback}")
+        if response.candidates:
+            finish = response.candidates[0].finish_reason
+            print(f"[Gemini] finish_reason: {finish}")
+
+        # Raise clearly if the text is empty rather than returning a silent fallback
+        if not response.text or not response.text.strip():
+            raise ValueError(
+                f"Gemini Pro returned empty text. "
+                f"finish_reason={response.candidates[0].finish_reason if response.candidates else 'N/A'}"
+            )
+
         return response.text
-    except Exception as e:
-        print(f"generate_reply error (pro): {e}")
-        # Fallback to flash
-        try:
-            response = _flash.generate_content(prompt)
-            return response.text
-        except Exception as e2:
-            print(f"generate_reply error (flash fallback): {e2}")
-            return "Sorry, I couldn't generate a reply at the moment."
+
+    except Exception as pro_err:
+        print(f"[Gemini] generate_reply PRO error:")
+        traceback.print_exc()
+
+    # ── Fallback to Flash ───────────────────────────────────────────────────────
+    try:
+        response = _flash.generate_content(prompt)
+
+        if hasattr(response, "prompt_feedback") and response.prompt_feedback:
+            print(f"[Gemini Flash] prompt_feedback: {response.prompt_feedback}")
+        if response.candidates:
+            finish = response.candidates[0].finish_reason
+            print(f"[Gemini Flash] finish_reason: {finish}")
+
+        if not response.text or not response.text.strip():
+            raise ValueError(
+                f"Gemini Flash returned empty text. "
+                f"finish_reason={response.candidates[0].finish_reason if response.candidates else 'N/A'}"
+            )
+
+        return response.text
+
+    except Exception as flash_err:
+        print(f"[Gemini] generate_reply FLASH FALLBACK error:")
+        traceback.print_exc()
+        # Re-raise so the caller (gmail_handler) can catch it, log the email ID,
+        # record a generation_error in the job summary, and skip gracefully.
+        raise flash_err
 
 
-# ── Email categorization ───────────────────────────────────────────────────────
+# ── Email categorization ─────────────────────────────────────────────────────────
 
 _STRIP_MD = re.compile(r"```(?:json)?(.*?)```", re.DOTALL)
 
@@ -122,6 +165,7 @@ def categorize_email(subject: str, body: str, sender: str) -> dict:
     except json.JSONDecodeError as je:
         print(f"Categorization JSON parse error: {je}")
         print(f"Raw Gemini response: {repr(raw_text[:300])}")
+        traceback.print_exc()
         # Fallback — assume reply is needed so it isn't silently dropped
         return {
             "category": "client_inquiry",
@@ -131,6 +175,7 @@ def categorize_email(subject: str, body: str, sender: str) -> dict:
         }
     except Exception as e:
         print(f"categorize_email error: {e}")
+        traceback.print_exc()
         return {
             "category": "client_inquiry",
             "priority": "medium",

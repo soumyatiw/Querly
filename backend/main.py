@@ -230,7 +230,13 @@ async def gmail_trigger(request: Request, background_tasks: BackgroundTasks, bod
     days = max(1, min(days, 30))
 
     job_id = await create_job(uid)
-    background_tasks.add_task(read_unread_emails_with_creds, creds, uid, job_id, days)
+
+    # FIX: capture the running event loop NOW (in async context) and pass it
+    # to the background task. Motor's connection is bound to this loop, so the
+    # sync thread must schedule all Motor coroutines back onto it via
+    # asyncio.run_coroutine_threadsafe() — NOT asyncio.run() which creates a new loop.
+    loop = asyncio.get_event_loop()
+    background_tasks.add_task(read_unread_emails_with_creds, creds, uid, job_id, days, loop)
 
     return {"status": "processing", "job_id": job_id, "days": days}
 
@@ -284,19 +290,32 @@ class DraftUpdateBody(BaseModel):
 @app.get("/drafts")
 async def list_drafts(request: Request, days: int = None):
     """
-    GET /drafts — list drafts for the logged-in user.
+    GET /drafts — list AI drafts pending review for the logged-in user.
+    PROBLEM 2 FIX: query is scoped to type='ai_draft' and status='pending_review'.
+    Also returns processed_count so the frontend toast can show a complete summary.
     Optional ?days=7 to filter to the last N days.
     """
     auth_header = request.headers.get("Authorization")
     decoded = verify_firebase_token_from_auth_header(auth_header)
     uid = decoded["uid"]
 
-    drafts = await get_user_drafts(uid, days=days)
+    # PROBLEM 2 FIX: get only ai_draft + pending_review items
+    drafts = await get_user_drafts(uid, days=days, pending_only=True)
+
+    # Count total processed (any status) for the summary toast
+    all_drafts      = await get_user_drafts(uid, days=days, pending_only=False)
+    processed_count = len([d for d in all_drafts if d.get("status") != "pending_review"])
+
     for d in drafts:
         d["_id"] = str(d["_id"])
         if "created_at" in d and d["created_at"]:
             d["created_at"] = d["created_at"].isoformat()
-    return {"drafts": drafts}
+
+    return {
+        "drafts": drafts,
+        "pending_count": len(drafts),
+        "processed_count": processed_count,
+    }
 
 @app.get("/emails/summary")
 async def get_emails_summary(request: Request):
