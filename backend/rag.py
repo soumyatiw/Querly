@@ -16,15 +16,15 @@ from sentence_transformers import SentenceTransformer
 
 from db import db  # reuse the shared motor client
 
-# ── model (lazy loaded to prevent startup timeouts on free hosting) ──────────
+# ── model (lazy loaded on first use to prevent deployment timeouts) ───────────
 _model = None
 
-def get_model():
+def _get_model():
     global _model
     if _model is None:
-        print("[RAG] Loading SentenceTransformer model into memory...")
+        print("[RAG] Initialising SentenceTransformer model (this may take a minute)...")
+        from sentence_transformers import SentenceTransformer
         _model = SentenceTransformer("all-MiniLM-L6-v2")
-        print("[RAG] Model loaded successfully.")
     return _model
 
 knowledge_collection = db.knowledge_base
@@ -52,8 +52,8 @@ def _chunk_text(text: str, chunk_words: int = 500) -> List[str]:
 
 def _embed(texts: List[str]) -> List[List[float]]:
     """Return L2-normalised float embeddings for a list of strings."""
-    m = get_model()
-    embeddings = m.encode(texts, normalize_embeddings=True)
+    model = _get_model()
+    embeddings = model.encode(texts, normalize_embeddings=True)
     return embeddings.tolist()
 
 
