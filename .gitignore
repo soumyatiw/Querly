@@ -3,6 +3,7 @@ backend/.env
 backend/credentials.json
 backend/token.json
 backend/.venv
+backend/tokens/
 # Python venv
 .venv/
 
