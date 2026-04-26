@@ -44,6 +44,7 @@ Jinja2==3.1.6
 markdown-it-py==4.0.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
+motor==3.7.1
 msgpack==1.1.2
 oauthlib==3.3.1
 orjson==3.11.4
@@ -58,6 +59,7 @@ pydantic-settings==2.11.0
 pydantic_core==2.33.2
 Pygments==2.19.2
 PyJWT==2.10.1
+pymongo==4.17.0
 pyparsing==3.2.3
 python-dotenv==1.1.1
 python-multipart==0.0.20

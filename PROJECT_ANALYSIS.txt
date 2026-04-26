@@ -1,0 +1,60 @@
+# Querly Project Analysis
+
+## 1. Project Overview
+Querly is a full-stack application designed to act as an AI-powered email assistant. It integrates with Firebase for authentication, Google OAuth for Gmail API access, and Google's Gemini AI to automatically read unread emails, generate context-aware replies, and send them on the user's behalf. 
+
+The project uses a modern tech stack:
+- **Backend:** FastAPI (Python), Firebase Admin SDK, Google API Client, Google Generative AI (Gemini).
+- **Frontend:** Next.js (React), Firebase Client SDK, CSS Modules.
+
+---
+
+## 2. Folder Structure & File Explanations
+
+### `/backend`
+Handles the core logic, API endpoints, and AI integrations.
+- `main.py`: The FastAPI entry point. It configures CORS, initializes Firebase Admin, handles the Google OAuth flow (`/auth/google/start` and `/auth/google/callback`), verifies Firebase tokens, and exposes endpoints to trigger Gmail reading.
+- `gmail_handler.py`: Contains the core logic for interacting with the Gmail API. It handles token authentication, fetches unread emails, parses email bodies (stripping HTML), filters out automated senders, calls Gemini for a reply, and sends the email back.
+- `gemini.py`: A wrapper module for the Google Gemini API. It loads the `gemini-2.5-pro` model and exposes a `generate_reply` function to create human-like responses.
+- `tokens/`: A local directory used to store user-specific Google OAuth credential JSON files.
+- `credentials.json`: The Google OAuth client secrets file (downloaded from Google Cloud Console).
+- `.env`: Stores backend environment variables like `GEMINI_API_KEY` and Firebase service account details.
+
+### `/frontend`
+The user interface, built with Next.js App Router.
+- `app/`: Contains the Next.js routing structure.
+  - `page.js` & `page.module.css`: The landing page of the application.
+  - `layout.js` & `globals.css`: Global layout and base styling.
+  - `login/` & `signup/`: Directories containing the authentication pages.
+  - `dashboard/`: The authenticated user area where users can connect their Gmail and trigger AI replies.
+- `components/`: Reusable React components for the UI (e.g., `HeroSection`, `FAQ`, `Navbar`, `Footer`, `HowItWorks`, `FeatureSection`). These include modular CSS for styling.
+- `firebase.js`: Initializes the Firebase client application for frontend authentication.
+- `.env.local`: Stores frontend environment variables (like Firebase config keys).
+
+---
+
+## 3. Current Flaws and Cons (Architectural & Implementation)
+Since the project is not yet completed, several MVP shortcuts need to be addressed before moving to production:
+
+1. **In-Memory State for OAuth:** `oauth_flows` in `main.py` is stored in a Python dictionary. This will fail if the server restarts or if you run multiple server workers. Needs to be moved to a cache like Redis.
+2. **File-Based Token Storage:** Storing user OAuth tokens as JSON files in a local `tokens/` directory is a major security and scalability risk. Tokens should be encrypted and saved in a proper database.
+3. **Synchronous Email Processing:** The `/gmail/trigger` endpoint runs the email reading and replying synchronously. If a user has many unread emails, the API request will time out. This should be offloaded to a background task queue (e.g., Celery, Redis Queue, or FastAPI `BackgroundTasks`).
+4. **Lack of a Database:** The application currently relies entirely on Firebase Auth and local files. A persistent database (like PostgreSQL or MongoDB) is needed to store user profiles, custom settings, and logs.
+5. **No Reply Review Mechanism:** The system automatically sends the AI-generated reply without user approval. This is highly risky, as AI can hallucinate or send inappropriate responses.
+6. **Basic Prompt Engineering:** The prompt in `gmail_handler.py` is very generic. It doesn't adapt to the user's specific tone, business context, or preferences.
+
+---
+
+## 4. Suggested AI Features to Implement
+To elevate Querly into a premium, industry-grade product, consider implementing the following AI-driven features:
+
+### 🌟 Core Priority Features (Must-Haves)
+1. **AI Draft Mode (Human-in-the-Loop):** Instead of auto-sending, the backend should create the AI-generated response as a "Draft" in the user's Gmail account (or display it on the Querly dashboard). The user can then review, edit, and approve the email before it gets sent.
+2. **Custom Tone & Persona Matching:** Allow users to set a specific tone (e.g., Professional, Casual, Enthusiastic, Apologetic) in their dashboard. Advanced: Read a few of the user's past sent emails to mimic their unique writing style automatically.
+3. **Smart Categorization & Triage:** Use AI to label incoming emails into categories (e.g., "Urgent," "Newsletter," "Client Inquiry," "Spam"). The dashboard can then prioritize which emails need the user's attention first.
+
+### 🚀 Advanced Features (Differentiators)
+4. **Context-Aware Business Replies:** Allow users to upload a "Knowledge Base" (e.g., a PDF of FAQs, pricing plans, or company policies). The AI can query this document (using RAG - Retrieval-Augmented Generation) to answer specific customer questions accurately in the email.
+5. **Auto-Scheduling & Calendar Integration:** Integrate with Google Calendar. If an email asks for a meeting, the AI can check the user's schedule and suggest 2-3 available time slots directly in the reply draft.
+6. **Thread Summarization:** For long, forwarded email threads, have Gemini generate a 3-bullet-point summary so the user doesn't have to read the entire history to understand the context.
+7. **Multi-Language Support:** Automatically detect the language of the incoming email and generate the reply in the exact same language, maintaining a native-sounding fluency.

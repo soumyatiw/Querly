@@ -2,7 +2,7 @@
 backend/.env
 backend/credentials.json
 backend/token.json
-
+backend/.venv
 # Python venv
 .venv/
 
@@ -12,3 +12,5 @@ __pycache__/
 
 # Logs
 node_modules/backend/tokens/
+
+frontend/.env.local

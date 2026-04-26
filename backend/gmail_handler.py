@@ -1,7 +1,9 @@
 import os
 import base64
+import json
 from bs4 import BeautifulSoup
-from gemini import generate_reply
+from gemini import generate_reply, categorize_email
+from rag import search_knowledge_base
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -10,41 +12,73 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
+# Import from our db module
+from db import get_user_tokens, save_user_tokens, update_job_status, save_draft, get_user_settings, get_processed_email_ids
+import asyncio
+
 # Allow reading, replying, and modifying email
-SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+SCOPES = ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send']
 
 
-def authenticate_gmail(token_path, credentials_path):
-    """Loads Credentials from token_path (JSON), otherwise returns None."""
-    creds = None
-    if os.path.exists(token_path):
-        try:
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-        except Exception as e:
-            print(f"⚠️ Failed to load token file {token_path}: {e}")
-            creds = None
+async def authenticate_gmail(uid: str):
+    """Loads Credentials from MongoDB using the user's uid."""
+    user_tokens = await get_user_tokens(uid)
+    if not user_tokens:
+        print(f"⚠️ No tokens found for uid {uid}")
+        return None
+        
+    access_token = user_tokens.get("google_access_token")
+    refresh_token = user_tokens.get("google_refresh_token")
+    
+    if not access_token:
+        print(f"⚠️ Access token missing for uid {uid}")
+        return None
+
+    # Load client config from credentials.json
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
+    
+    try:
+        with open(CREDENTIALS_PATH, 'r') as f:
+            creds_data = json.load(f)
+            client_config = creds_data.get('web') or creds_data.get('installed')
+            client_id = client_config['client_id']
+            client_secret = client_config['client_secret']
+            token_uri = client_config['token_uri']
+    except Exception as e:
+        print("⚠️ Failed to load credentials.json:", e)
+        return None
+
+    # Reconstruct Credentials object
+    creds = Credentials(
+        token=access_token,
+        refresh_token=refresh_token,
+        token_uri=token_uri,
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=SCOPES
+    )
 
     # Refresh if expired
     if creds and creds.expired:
         try:
             if creds.refresh_token:
                 creds.refresh(Request())
-                with open(token_path, 'w') as f:
-                    f.write(creds.to_json())
+                await save_user_tokens(
+                    uid=uid,
+                    email=user_tokens.get("email", ""),
+                    access_token=creds.token,
+                    refresh_token=creds.refresh_token,
+                    token_expiry=creds.expiry.isoformat() if creds.expiry else None
+                )
             else:
                 print("⚠️ No refresh token available, re-auth required.")
                 creds = None
         except Exception as e:
-            print(f"⚠️ Error refreshing token for {token_path}: {e}")
+            print(f"⚠️ Error refreshing token for {uid}: {e}")
             creds = None
 
     return creds
-
-
-def save_credentials_to_file(creds, token_path):
-    """Save google.oauth2.credentials.Credentials to file as json"""
-    with open(token_path, 'w') as f:
-        f.write(creds.to_json())
 
 
 def strip_html_tags(html):
@@ -91,7 +125,7 @@ def is_automated_sender(sender_email):
     return any(keyword in sender_email.lower() for keyword in keywords)
 
 
-def send_email_reply(service, to_email, subject, message_body):
+def create_gmail_draft(service, to_email, subject, message_body):
     message = MIMEMultipart()
     message['to'] = to_email
     message['subject'] = f"Re: {subject}"
@@ -102,13 +136,61 @@ def send_email_reply(service, to_email, subject, message_body):
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
     try:
-        service.users().messages().send(
+        draft = service.users().drafts().create(
             userId='me',
-            body={'raw': raw_message}
+            body={'message': {'raw': raw_message}}
         ).execute()
-        print("✅ Reply sent successfully.\n")
+        print(f"✅ Draft created successfully: {draft['id']}\n")
+        return draft['id']
     except Exception as e:
-        print("❌ Error sending email:", e)
+        print("❌ Error creating draft:", e)
+        return None
+
+def send_gmail_draft(service, draft_id):
+    try:
+        service.users().drafts().send(
+            userId='me',
+            body={'id': draft_id}
+        ).execute()
+        print(f"✅ Draft sent successfully: {draft_id}\n")
+        return True
+    except Exception as e:
+        print("❌ Error sending draft:", e)
+        return False
+
+def delete_gmail_draft(service, draft_id):
+    try:
+        service.users().drafts().delete(
+            userId='me',
+            id=draft_id
+        ).execute()
+        print(f"✅ Draft deleted successfully: {draft_id}\n")
+        return True
+    except Exception as e:
+        print("❌ Error deleting draft:", e)
+        return False
+
+def update_gmail_draft(service, draft_id, to_email, subject, message_body):
+    message = MIMEMultipart()
+    message['to'] = to_email
+    message['subject'] = f"Re: {subject}" if not subject.startswith("Re:") else subject
+
+    msg = MIMEText(message_body)
+    message.attach(msg)
+
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+    try:
+        draft = service.users().drafts().update(
+            userId='me',
+            id=draft_id,
+            body={'message': {'raw': raw_message}}
+        ).execute()
+        print(f"✅ Draft updated successfully: {draft_id}\n")
+        return True
+    except Exception as e:
+        print("❌ Error updating draft:", e)
+        return False
 
 
 def mark_email_as_replied(service, msg_id):
@@ -124,39 +206,81 @@ def mark_email_as_replied(service, msg_id):
         print(f"⚠️ Failed to mark email as replied: {e}")
 
 
-def read_unread_emails_with_creds(creds):
+async def read_unread_emails_with_creds(creds, uid, job_id=None, days=1):
     if not creds:
         print("No credentials passed.")
+        if job_id:
+            await update_job_status(job_id, "error", "No credentials passed")
         return
+
+    user_settings = await get_user_settings(uid)
+    tone = user_settings.get("tone", "Professional")
+    business_context = user_settings.get("business_context", "")
+    persona_notes = user_settings.get("persona_notes", "")
+
+    if job_id:
+        await update_job_status(job_id, "processing", "Fetching unread emails...")
 
     service = build('gmail', 'v1', credentials=creds)
 
+    # Build date-filtered Gmail query — only fetch emails in the chosen window.
+    # NOTE: We do NOT use is:unread because Querly marks emails as read after
+    # processing. After a draft clear, those emails would never be found again.
+    # The already_processed dedup set below prevents re-processing duplicates.
+    from datetime import datetime as _dt, timedelta as _td
+    after_date = (_dt.utcnow() - _td(days=days)).strftime("%Y/%m/%d")
+    gmail_query = f"after:{after_date}"
+
+    # Pre-load processed email IDs to prevent duplicate drafts on re-run
+    already_processed = await get_processed_email_ids(uid)
+
     try:
-        results = service.users().messages().list(
-            userId='me',
-            q="is:unread",
-            maxResults=5
-        ).execute()
+        def fetch_messages():
+            return service.users().messages().list(
+                userId='me',
+                q=gmail_query,
+                maxResults=20
+            ).execute()
+        results = await asyncio.to_thread(fetch_messages)
     except Exception as e:
-        print("❌ Error listing messages:", e)
+        print(f"Error listing messages: {e}")
+        if job_id:
+            await update_job_status(job_id, "error", f"Error listing messages: {e}")
         return
 
-    messages = results.get('messages', [])
+    all_messages = results.get('messages', [])
+    # Skip emails that already have a draft / skip record in MongoDB
+    messages = [m for m in all_messages if m['id'] not in already_processed]
+
     if not messages:
-        print("✅ No unread emails found.")
+        print("No new unread emails to process.")
+        if job_id:
+            note = f"No new emails to process (window: {days}d, already handled: {len(all_messages)})."
+            await update_job_status(job_id, "done", note)
         return
 
-    for msg in messages:
+    processed_count = 0
+    replied_count = 0
+
+    for idx, msg in enumerate(messages):
         msg_id = msg['id']
-        msg_data = service.users().messages().get(userId='me', id=msg_id).execute()
+        if job_id:
+            await update_job_status(job_id, "processing", f"Processing email {idx + 1} of {len(messages)}...")
+
+        def fetch_msg_data():
+            return service.users().messages().get(userId='me', id=msg_id).execute()
+            
+        msg_data = await asyncio.to_thread(fetch_msg_data)
         headers = msg_data['payload']['headers']
 
-        subject = sender = ""
+        subject = sender = email_date = ""
         for header in headers:
             if header['name'] == 'Subject':
                 subject = header['value']
             if header['name'] == 'From':
                 sender = header['value']
+            if header['name'] == 'Date':
+                email_date = header['value']
 
         payload = msg_data.get('payload', {})
         body = get_email_body(payload) or "⚠️ Could not extract email content."
@@ -167,40 +291,109 @@ def read_unread_emails_with_creds(creds):
 
         if is_automated_sender(sender):
             print("🚫 Automated/no-reply sender detected. Skipping reply.\n")
-            mark_email_as_replied(service, msg_id)
+            def mark_replied():
+                mark_email_as_replied(service, msg_id)
+            await asyncio.to_thread(mark_replied)
+            processed_count += 1
             continue
 
-        prompt = f"""
-You are an AI email reply bot.
+        email_context = f"From: {sender}\nSubject: {subject}\nMessage: {body}"
 
-From: {sender}
-Subject: {subject}
-Message: {body}
+        # Categorize first
+        try:
+            def run_categorize():
+                return categorize_email(subject, body, sender)
+            categorization = await asyncio.to_thread(run_categorize)
+            print(f"📊 Categorization: {categorization}")
+        except Exception as e:
+            print("❌ Categorization failed:", e)
+            categorization = {
+                "category": "other",
+                "priority": "low",
+                "summary": "Could not categorize.",
+                "should_reply": False
+            }
 
-Reply strictly and only with a professional, polite response in human-like language.
-"""
+        should_reply = categorization.get("should_reply", False)
+        category = categorization.get("category", "other")
+
+        if not should_reply or category.lower() in ["newsletter", "spam"]:
+            print(f"⏭️ Skipping reply for email (Category: {category}, Should Reply: {should_reply})")
+            await save_draft(
+                draft_id=None,
+                uid=uid,
+                original_email_id=msg_id,
+                original_subject=subject,
+                original_sender=sender,
+                original_body_snippet=body,
+                ai_reply_body=None,
+                tone_used=tone,
+                categorization=categorization,
+                email_date=email_date,
+            )
+            def mark_replied():
+                mark_email_as_replied(service, msg_id)
+            await asyncio.to_thread(mark_replied)
+            processed_count += 1
+            continue
 
         try:
-            ai_reply = generate_reply(prompt).strip()
+            # RAG: retrieve relevant knowledge-base chunks using the email body as query
+            rag_context = await search_knowledge_base(uid, body)
+
+            def run_gemini():
+                return generate_reply(
+                    email_body=email_context,
+                    tone=tone,
+                    business_context=business_context,
+                    persona_notes=persona_notes,
+                    relevant_context=rag_context if rag_context else None
+                ).strip()
+            ai_reply = await asyncio.to_thread(run_gemini)
 
             if not ai_reply:
                 print("🤖 No valid reply generated. Skipping.\n")
-                mark_email_as_replied(service, msg_id)
+                def mark_replied():
+                    mark_email_as_replied(service, msg_id)
+                await asyncio.to_thread(mark_replied)
+                processed_count += 1
                 continue
 
             print("🤖 Suggested Reply:")
             print(ai_reply)
 
-            send_email_reply(service, sender, subject, ai_reply)
-            mark_email_as_replied(service, msg_id)
+            def create_draft_and_mark():
+                draft_id = create_gmail_draft(service, sender, subject, ai_reply)
+                if draft_id:
+                    mark_email_as_replied(service, msg_id)
+                return draft_id
+            
+            draft_id = await asyncio.to_thread(create_draft_and_mark)
+            if draft_id:
+                await save_draft(
+                    draft_id=draft_id,
+                    uid=uid,
+                    original_email_id=msg_id,
+                    original_subject=subject,
+                    original_sender=sender,
+                    original_body_snippet=body,
+                    ai_reply_body=ai_reply,
+                    tone_used=tone,
+                    categorization=categorization,
+                    email_date=email_date,
+                )
+                replied_count += 1
+            processed_count += 1
 
         except Exception as e:
             print(f"❌ Gemini error: {e}")
             continue
 
         print("-" * 60)
+        
+    if job_id:
+        await update_job_status(job_id, "done", f"Processed {processed_count} emails, replied to {replied_count}.")
 
 
 if __name__ == "__main__":
-    creds = authenticate_gmail("backend/token.json", "backend/credentials.json")
-    read_unread_emails_with_creds(creds)
+    pass
