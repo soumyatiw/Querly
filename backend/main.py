@@ -50,6 +50,13 @@ if not firebase_admin._apps:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GOOGLE_CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
 
+def get_google_flow(redirect_uri):
+    scopes = ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send']
+    env_creds = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if env_creds:
+        return Flow.from_client_config(json.loads(env_creds), scopes=scopes, redirect_uri=redirect_uri)
+    return Flow.from_client_secrets_file(GOOGLE_CREDENTIALS_PATH, scopes=scopes, redirect_uri=redirect_uri)
+
 @app.get("/auth/google/start")
 async def start_google_oauth(idToken: str):
     """
@@ -67,11 +74,7 @@ async def start_google_oauth(idToken: str):
         raise HTTPException(status_code=401, detail=f"Invalid ID token: {e}")
 
     # Create the Flow with offline access (to get refresh token)
-    flow = Flow.from_client_secrets_file(
-        GOOGLE_CREDENTIALS_PATH,
-        scopes=['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send'],
-        redirect_uri=os.getenv("GOOGLE_OAUTH_REDIRECT_URI")  # must match console settings
-    )
+    flow = get_google_flow(os.getenv("GOOGLE_OAUTH_REDIRECT_URI"))
 
     # Generate authorization URL with 'access_type' = 'offline' to get refresh_token
     auth_url, state = flow.authorization_url(
@@ -105,11 +108,7 @@ async def google_oauth_callback(request: Request):
 
     uid = stored["uid"]
 
-    flow = Flow.from_client_secrets_file(
-        GOOGLE_CREDENTIALS_PATH,
-        scopes=['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send'],
-        redirect_uri=os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
-    )
+    flow = get_google_flow(os.getenv("GOOGLE_OAUTH_REDIRECT_URI"))
 
     # fetch token
     flow.fetch_token(code=code)
