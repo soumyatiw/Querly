@@ -22,7 +22,7 @@ import {
   MdArrowBack,
 } from "react-icons/md";
 
-const BACKEND = "http://localhost:8000";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 const TONES = [
   { value: "Professional",  label: "Professional",  Icon: MdOutlineWork,                    desc: "Polished & formal"    },

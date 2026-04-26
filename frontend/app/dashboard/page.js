@@ -31,7 +31,7 @@ import {
   MdWifiOff,
 } from "react-icons/md";
 
-const BACKEND = "http://localhost:8000";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 async function apiFetch(path, options = {}) {
   const user = auth.currentUser;
