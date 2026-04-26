@@ -81,7 +81,11 @@ async def ingest_pdf(uid: str, filename: str, file_bytes: bytes) -> int:
         for chunk, emb in zip(chunks, embeddings)
     ]
 
-    await knowledge_collection.insert_many(docs)
+    try:
+        await knowledge_collection.insert_many(docs)
+    except Exception as e:
+        print(f"[RAG] insert_many error: {e}")
+        raise
     return len(docs)
 
 
@@ -114,3 +118,7 @@ async def search_knowledge_base(uid: str, query: str, top_k: int = 3) -> List[st
     scored.sort(key=lambda x: x[1], reverse=True)
 
     return [text for text, _ in scored[:top_k]]
+
+
+# ── alias — keeps backward-compat if any code calls either name ──────────────
+query_knowledge_base = search_knowledge_base

@@ -8,14 +8,28 @@ import { auth } from "../../../firebase";
 import { getIdToken, onAuthStateChanged, signOut } from "firebase/auth";
 import styles from "./page.module.css";
 
+import {
+  MdOutlineWork,
+  MdOutlineSentimentSatisfied,
+  MdRocketLaunch,
+  MdOutlineVolunteerActivism,
+  MdOutlineBolt,
+  MdCheckCircleOutline,
+  MdErrorOutline,
+  MdOutlineUploadFile,
+  MdOutlineAttachFile,
+  MdOutlineSave,
+  MdArrowBack,
+} from "react-icons/md";
+
 const BACKEND = "http://localhost:8000";
 
 const TONES = [
-  { value: "Professional",  label: "Professional",  icon: "💼", desc: "Polished & formal"    },
-  { value: "Casual",        label: "Casual",         icon: "😊", desc: "Friendly & relaxed"   },
-  { value: "Enthusiastic",  label: "Enthusiastic",   icon: "🚀", desc: "Energetic & upbeat"   },
-  { value: "Apologetic",    label: "Apologetic",     icon: "🙏", desc: "Empathetic & careful"  },
-  { value: "Concise",       label: "Concise",        icon: "⚡", desc: "Short & to the point" },
+  { value: "Professional",  label: "Professional",  Icon: MdOutlineWork,                    desc: "Polished & formal"    },
+  { value: "Casual",        label: "Casual",         Icon: MdOutlineSentimentSatisfied,      desc: "Friendly & relaxed"   },
+  { value: "Enthusiastic",  label: "Enthusiastic",   Icon: MdRocketLaunch,                   desc: "Energetic & upbeat"   },
+  { value: "Apologetic",    label: "Apologetic",     Icon: MdOutlineVolunteerActivism,       desc: "Empathetic & careful"  },
+  { value: "Concise",       label: "Concise",        Icon: MdOutlineBolt,                    desc: "Short & to the point" },
 ];
 
 async function apiFetch(path, options = {}) {
@@ -37,9 +51,12 @@ function Toast({ message, type, onDone }) {
     const t = setTimeout(onDone, 3500);
     return () => clearTimeout(t);
   }, [onDone]);
+
+  const Icon = type === "success" ? MdCheckCircleOutline : MdErrorOutline;
   return (
     <div className={`${styles.toast} ${type === "success" ? styles.toastSuccess : styles.toastError}`}>
-      {type === "success" ? "✅" : "❌"} {message}
+      <Icon size={17} style={{ flexShrink: 0 }} />
+      {message}
     </div>
   );
 }
@@ -93,7 +110,7 @@ function DropZone({ onUploadDone }) {
         </div>
       ) : (
         <div className={styles.dropZoneContent}>
-          <span className={styles.dropZoneIcon}>📄</span>
+          <MdOutlineUploadFile size={36} className={styles.dropZoneIcon} />
           <span className={styles.dropZoneText}>
             {dragging ? "Drop your PDF here" : "Drag & drop a PDF, or click to browse"}
           </span>
@@ -107,7 +124,7 @@ function DropZone({ onUploadDone }) {
         <ul className={styles.fileList} onClick={(e) => e.stopPropagation()}>
           {files.map((f, i) => (
             <li key={i} className={styles.fileItem}>
-              <span className={styles.fileItemIcon}>📎</span>
+              <MdOutlineAttachFile size={14} className={styles.fileItemIcon} />
               <span className={styles.fileItemName}>{f.name}</span>
               <span className={styles.fileItemChunks}>{f.chunks} chunks</span>
             </li>
@@ -187,7 +204,10 @@ export default function SettingsPage() {
           <span className={styles.navLabel}>Settings</span>
         </div>
         <div className={styles.navRight}>
-          <Link href="/dashboard" className={styles.btnBack}>← Dashboard</Link>
+          <Link href="/dashboard" className={styles.btnBack}>
+            <MdArrowBack size={15} />
+            Dashboard
+          </Link>
           <button className={styles.btnLogout} onClick={async () => { await signOut(auth); router.replace("/login"); }}>
             Sign Out
           </button>
@@ -211,15 +231,20 @@ export default function SettingsPage() {
               <p className={styles.cardDesc}>Choose how your AI replies sound. Applied to every draft generated.</p>
             </div>
             <div className={styles.toneGrid}>
-              {TONES.map((t) => (
-                <label key={t.value} className={`${styles.tonePill} ${tone === t.value ? styles.tonePillActive : ""}`}>
-                  <input type="radio" name="tone" value={t.value} checked={tone === t.value}
-                    onChange={() => { setTone(t.value); setToneErr(""); }} className={styles.hiddenRadio} />
-                  <span className={styles.toneIcon}>{t.icon}</span>
-                  <span className={styles.toneName}>{t.label}</span>
-                  <span className={styles.toneDesc}>{t.desc}</span>
-                </label>
-              ))}
+              {TONES.map((t) => {
+                const ToneIcon = t.Icon;
+                return (
+                  <label key={t.value} className={`${styles.tonePill} ${tone === t.value ? styles.tonePillActive : ""}`}>
+                    <input type="radio" name="tone" value={t.value} checked={tone === t.value}
+                      onChange={() => { setTone(t.value); setToneErr(""); }} className={styles.hiddenRadio} />
+                    <span className={styles.toneIcon}>
+                      <ToneIcon size={20} />
+                    </span>
+                    <span className={styles.toneName}>{t.label}</span>
+                    <span className={styles.toneDesc}>{t.desc}</span>
+                  </label>
+                );
+              })}
             </div>
             {toneErr && <p className={styles.fieldError}>{toneErr}</p>}
           </div>
@@ -260,7 +285,10 @@ export default function SettingsPage() {
           {/* Save */}
           <div className={styles.saveRow}>
             <button type="submit" className={styles.btnSave} disabled={saving}>
-              {saving ? <><span className={styles.spinnerSm} /> Saving…</> : "💾 Save Settings"}
+              {saving
+                ? <><span className={styles.spinnerSm} /> Saving…</>
+                : <><MdOutlineSave size={16} /> Save Settings</>
+              }
             </button>
           </div>
 

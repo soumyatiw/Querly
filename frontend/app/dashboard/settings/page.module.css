@@ -62,6 +62,7 @@
 .btnBack {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   padding: 8px 18px;
   background: #fff;
   color: #1a1a1a;
@@ -179,7 +180,16 @@
   transform: translateY(-2px);
 }
 
-.toneIcon { font-size: 24px; line-height: 1; }
+.toneIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px; height: 40px;
+  background: #fff8e5;
+  border: 1px solid #fde68a;
+  border-radius: 50%;
+  color: #ffc64b;
+}
 .toneName { font-size: 13px; font-weight: 700; color: #1a1a1a; }
 .toneDesc { font-size: 11px; color: #6b7280; font-weight: 500; line-height: 1.3; }
 
@@ -239,7 +249,7 @@
   pointer-events: none;
 }
 
-.dropZoneIcon  { font-size: 40px; }
+.dropZoneIcon  { color: #ffc64b; display: flex; align-items: center; }
 .dropZoneText  { font-size: 14px; font-weight: 600; color: #374151; }
 .dropZoneSub   { font-size: 12px; color: #9ca3af; }
 
@@ -277,7 +287,7 @@
   animation: slideIn 0.25s ease;
 }
 
-.fileItemIcon { font-size: 16px; }
+.fileItemIcon { display: flex; align-items: center; color: #ffc64b; flex-shrink: 0; }
 .fileItemName { flex: 1; font-weight: 600; color: #1a1a1a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fileItemChunks {
   font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px;
@@ -340,6 +350,9 @@
   z-index: 9999;
   pointer-events: none;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   animation: toastIn 0.25s ease, toastOut 0.3s ease 3.2s forwards;
 }
 

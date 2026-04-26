@@ -3,6 +3,22 @@
 import { useState, useEffect, useCallback } from "react";
 import styles from "./DraftModal.module.css";
 
+import {
+  MdOutlineLocalFireDepartment,
+  MdOutlineWork,
+  MdOutlineCalendarMonth,
+  MdOutlineNewspaper,
+  MdBlock,
+  MdOutlineCorporateFare,
+  MdOutlineEmail,
+  MdClose,
+  MdLightbulbOutline,
+  MdCheckCircleOutline,
+  MdErrorOutline,
+  MdOutlineDelete,
+  MdSend,
+} from "react-icons/md";
+
 
 // ── Date formatter ────────────────────────────────────────────────────────────
 function formatEmailDate(raw) {
@@ -32,13 +48,13 @@ const TONE_COLORS = {
 
 // ── Category config ───────────────────────────────────────────────────────────
 const CATEGORY_ICONS = {
-  urgent:          "🔥",
-  client_inquiry:  "💼",
-  meeting_request: "📅",
-  newsletter:      "📰",
-  spam:            "🚫",
-  internal:        "🏢",
-  other:           "📧",
+  urgent:          MdOutlineLocalFireDepartment,
+  client_inquiry:  MdOutlineWork,
+  meeting_request: MdOutlineCalendarMonth,
+  newsletter:      MdOutlineNewspaper,
+  spam:            MdBlock,
+  internal:        MdOutlineCorporateFare,
+  other:           MdOutlineEmail,
 };
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -48,9 +64,12 @@ function Toast({ message, type, onDone }) {
     return () => clearTimeout(t);
   }, [onDone]);
 
+  const Icon = type === "success" ? MdCheckCircleOutline : MdErrorOutline;
+
   return (
     <div className={`${styles.toast} ${type === "success" ? styles.toastSuccess : styles.toastError}`}>
-      {type === "success" ? "✅" : "❌"} {message}
+      <Icon size={17} style={{ verticalAlign: "middle", marginRight: 6 }} />
+      {message}
     </div>
   );
 }
@@ -58,9 +77,8 @@ function Toast({ message, type, onDone }) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit }) {
   const [editBody, setEditBody] = useState(draft.ai_reply_body ?? "");
-  const [saving,   setSaving]   = useState(false);
-  const [acting,   setActing]   = useState(false); // approve / reject in-flight
-  const [toast,    setToast]    = useState(null);  // { message, type }
+  const [acting,   setActing]   = useState(false);
+  const [toast,    setToast]    = useState(null);
 
   // Close on Escape key
   useEffect(() => {
@@ -79,21 +97,10 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
     setToast({ message, type });
   }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await onEdit(draft.draft_id, editBody);
-      showToast("Draft saved successfully.");
-    } catch {
-      showToast("Failed to save draft.", "error");
-    }
-    setSaving(false);
-  };
-
   const handleApprove = async () => {
     setActing(true);
     try {
-      // Auto-save edits before sending — no need to press Save first
+      // Auto-save edits before sending
       if (editBody !== draft.ai_reply_body) {
         await onEdit(draft.draft_id, editBody);
       }
@@ -118,15 +125,14 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
     }
   };
 
-  const tone     = draft.tone_used ?? "Professional";
-  const toneCfg  = TONE_COLORS[tone] ?? TONE_COLORS.Professional;
-  const category = draft.categorization?.category;
-  const catIcon  = category ? (CATEGORY_ICONS[category] ?? "📧") : null;
+  const tone      = draft.tone_used ?? "Professional";
+  const toneCfg   = TONE_COLORS[tone] ?? TONE_COLORS.Professional;
+  const category  = draft.categorization?.category;
+  const CatIcon   = category ? (CATEGORY_ICONS[category] ?? MdOutlineEmail) : null;
   const isPending = draft.status === "pending_review";
-  const isDirty   = editBody !== draft.ai_reply_body; // track unsaved changes
+  const isDirty   = editBody !== draft.ai_reply_body;
 
   return (
-    /* Backdrop */
     <div className={styles.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={styles.modal} role="dialog" aria-modal="true" aria-label="Draft review">
 
@@ -141,9 +147,10 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
               >
                 {tone}
               </span>
-              {catIcon && (
+              {CatIcon && (
                 <span className={styles.catBadge}>
-                  {catIcon} {category?.replace(/_/g, " ")}
+                  <CatIcon size={13} style={{ verticalAlign: "middle", marginRight: 3 }} />
+                  {category?.replace(/_/g, " ")}
                 </span>
               )}
               {draft.categorization?.priority && (
@@ -154,14 +161,14 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
             </div>
           </div>
           <button className={styles.closeBtn} onClick={onClose} aria-label="Close modal">
-            ✕
+            <MdClose size={20} />
           </button>
         </div>
 
         {/* ── AI summary strip ── */}
         {draft.categorization?.summary && (
           <div className={styles.summaryStrip}>
-            <span className={styles.summaryIcon}>💡</span>
+            <MdLightbulbOutline size={16} className={styles.summaryIcon} />
             <span>{draft.categorization.summary}</span>
           </div>
         )}
@@ -204,7 +211,7 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
               <span className={styles.panelLabel}>AI-Generated Reply</span>
               {isPending && (
                 <span className={styles.editHint}>
-                  {isDirty ? "✏️ Edited (auto-saved on send)" : "✏️ Editable"}
+                  {isDirty ? "Edited — auto-saved on send" : "Editable"}
                 </span>
               )}
             </div>
@@ -234,7 +241,8 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
                 onClick={handleReject}
                 disabled={acting}
               >
-                ❌ Reject
+                <MdOutlineDelete size={16} style={{ verticalAlign: "middle", marginRight: 5 }} />
+                Reject
               </button>
             </div>
             <div className={styles.footerRight}>
@@ -243,9 +251,14 @@ export default function DraftModal({ draft, onClose, onApprove, onReject, onEdit
                 onClick={handleApprove}
                 disabled={acting}
               >
-                {acting
-                  ? <><span className={styles.spinnerSm} /> {isDirty ? "Saving & Sending…" : "Sending…"}</>
-                  : isDirty ? "✅ Save & Send" : "✅ Approve & Send"}
+                {acting ? (
+                  <><span className={styles.spinnerSm} /> {isDirty ? "Saving & Sending…" : "Sending…"}</>
+                ) : (
+                  <>
+                    <MdSend size={15} style={{ verticalAlign: "middle", marginRight: 6 }} />
+                    {isDirty ? "Save & Send" : "Approve & Send"}
+                  </>
+                )}
               </button>
             </div>
           </div>

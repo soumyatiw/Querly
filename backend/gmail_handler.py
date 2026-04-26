@@ -285,7 +285,12 @@ def read_unread_emails_with_creds(
     try:
         from rag import query_knowledge_base
         rag_available = True
-    except ImportError:
+        print("[RAG] module loaded — knowledge base search enabled")
+    except ImportError as e:
+        print(f"[RAG] module unavailable: {e}")
+        rag_available = False
+    except Exception as e:
+        print(f"[RAG] unexpected error loading module: {e}")
         rag_available = False
 
     for msg_id in new_message_ids:
@@ -343,13 +348,20 @@ def read_unread_emails_with_creds(
             ), loop)
             continue
 
-        # RAG context (optional)
+        # RAG context (optional) — search user's knowledge base
         relevant_context = None
         if rag_available:
             try:
-                relevant_context = _run(query_knowledge_base(uid, f"{subject}\n{body[:500]}"), loop)
+                relevant_context = _run(
+                    query_knowledge_base(uid, f"{subject}\n{body[:500]}"),
+                    loop
+                )
+                if relevant_context:
+                    print(f"[RAG] {len(relevant_context)} chunk(s) retrieved for email {msg_id}")
+                else:
+                    print(f"[RAG] no matching chunks for email {msg_id} (knowledge base may be empty)")
             except Exception as rag_err:
-                print(f"⚠️ RAG query failed: {rag_err}")
+                print(f"[RAG] query failed for {msg_id}: {rag_err}")
 
         # Generate AI reply — raise on failure, skip gracefully
         try:
