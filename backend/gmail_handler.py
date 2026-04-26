@@ -51,18 +51,22 @@ async def authenticate_gmail(uid: str):
         print(f"⚠️ Access token missing for uid {uid}")
         return None
 
-    BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
-    CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
-
+    env_creds = os.getenv("GOOGLE_CREDENTIALS_JSON")
     try:
-        with open(CREDENTIALS_PATH, 'r') as f:
-            creds_data    = json.load(f)
-            client_config = creds_data.get('web') or creds_data.get('installed')
-            client_id     = client_config['client_id']
-            client_secret = client_config['client_secret']
-            token_uri     = client_config['token_uri']
+        if env_creds:
+            creds_data = json.loads(env_creds)
+        else:
+            BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+            CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
+            with open(CREDENTIALS_PATH, 'r') as f:
+                creds_data = json.load(f)
+                
+        client_config = creds_data.get('web') or creds_data.get('installed')
+        client_id     = client_config['client_id']
+        client_secret = client_config['client_secret']
+        token_uri     = client_config['token_uri']
     except Exception as e:
-        print("⚠️ Failed to load credentials.json:", e)
+        print("⚠️ Failed to load google credentials:", e)
         return None
 
     creds = Credentials(

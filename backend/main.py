@@ -190,12 +190,15 @@ async def gmail_status(request: Request):
     decoded = verify_firebase_token_from_auth_header(auth_header)
     uid = decoded["uid"]
     
-    user_tokens = await get_user_tokens(uid)
-    if user_tokens and user_tokens.get("google_access_token"):
+    print(f"gmail_status uid: {uid}")
+    tokens = await get_user_tokens(uid)
+    print(tokens)
+    
+    if tokens and tokens.get("google_access_token"):
         # We can also verify if the token actually works, but for simple status checking:
         creds = await authenticate_gmail(uid)
         if creds:
-            connected_email = user_tokens.get("email")
+            connected_email = tokens.get("email")
             if not connected_email:
                 try:
                     service = build('gmail', 'v1', credentials=creds)
